@@ -22,7 +22,7 @@ The library parents to `gethui()` when available, then `CoreGui` if the script h
 
 ```lua
 local win = Sypse:CreateWindow({
-    Title = "Sypse UI", Version = "v1.0.6", Subtitle = "attached to · Blade Arena",
+    Title = "Sypse UI", Version = "v1.0.0", Subtitle = "attached to · Blade Arena",
     Theme = "Acrylic", Size = UDim2.fromOffset(980, 620),
     ToggleKey = Enum.KeyCode.RightShift, LiveStats = true,
 })
@@ -100,6 +100,10 @@ Every container (page, section, column, accordion) supports:
 | `AddConsole({ Height, HookLogService, MaxLines })` | Timestamped levels, filter pills, Clear, blinking caret. |
 | `AddSearchBar({ Placeholder, Target, Total, Callback })` | Debounced; `Target` is any handle with `:Filter(q)` (console, player grid, page). |
 | `AddPlayerGrid({ Items = "live" or list, Actions, Search, Columns, Default, OnSelect })` | Avatar thumbnails with striped placeholders, status dot, tag. Actions receive the selected item. |
+| `AddTree({ Name, Root, Depth, Filter, OnSelect, Height, MaxNodes })` | Collapsible Explorer-style hierarchy. `Root` is a live `Instance` (children walked lazily on expand — pointing it at `game` never recurses the DataModel) or a plain nested Lua table, which makes it a JSON/config viewer. Class-coloured icons, child counts, click to select and expand. `:Refresh()`, `:Expand(path)`, `:Collapse(path)`, `:Select(x)`, `:GetSelected()`, `:SetRoot(x)`, `:Filter(q)`. |
+| `AddGraph({ Name, Series, Window = 60, Interval = 1, Height, Sparklines })` | Rolling line chart with a filled area, a dot on the latest sample, peak/low labels and auto-scaled Y. `Series = { { Name, Color, Get = fn } }`; more than one adds a segmented switch plus compact sparklines. Samples on a timer, never RenderStepped, and draws from a reused pool of rotated frames. The curve is Catmull-Rom smoothed (`Smooth = false` for raw straight segments). `:Push(series, value)`, `:Clear()`, `:SetSeries(name)`, `:GetSeries()`, `:Redraw()`. |
+| `AddRadar({ Name, Range, Ranges, Shape, Rotate, MaxWidth })` | Circular (or `Shape = "square"`) minimap: range rings, crosshair, sweeping accent line, ringed player dot. Blips beyond range clamp to the edge, shrink and fade. `Rotate = true` turns blips with the camera yaw so "up" is where you face. `:SetPoints({ { Position = Vector2/Vector3, Kind, Label } })`, `:SetRange(n)`, `:GetRange()`. |
+| `AddTable({ Name, Columns, Rows, Sort, Height, OnSelect, Zebra })` | Sortable grid with a pinned header, zebra rows and a selection bar. Columns take `Key, Label, Width ("2fr" or px), Numeric, Align, Format(v, row), Color(v, row)` for conditional colouring. Click a header to sort (toggles asc/desc, arrow on the active column). `:SetRows()`, `:AddRow()`, `:Sort(key, dir)`, `:Select(row)`, `:GetSelected()`, `:Filter(q)`. |
 | `AddConfigManager({ Folder })` | Profile list with ACTIVE / SAVED / RISKY tags, filename field, Save / Load / Export / Delete. |
 
 Every control handle has `:Set(value)`, `:Get()`, `:SetVisible(bool)`, `:SetLocked(bool)`, `:OnChanged(fn)` and `:Destroy()`. Controls with a `Flag` write to `Sypse.Flags[flag]` and are saved by the config system. A colour picker also writes `Flags[flag .. "Transparency"]`. Controls marked `Risky = true` make a saved profile show the RISKY tag when they are on.

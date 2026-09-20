@@ -27,7 +27,7 @@ local Sypse = loadstring(game:HttpGet("https://raw.githubusercontent.com/Sypse/S
 --==============================================================================
 local win = Sypse:CreateWindow({
     Title = "Sypse Example",          -- title bar text (the app icon shows its first letter)
-    Version = "v1.0.6",               -- accent badge next to the title
+    Version = "v1.0.7",               -- accent badge next to the title
     Subtitle = "feature tour",        -- dim mono line after the badge
     Theme = "Acrylic",                -- any name in Sypse.Themes, or a theme table
     Size = UDim2.fromOffset(980, 620),
@@ -318,6 +318,94 @@ local grid = playersSeg:AddPlayerGrid({
 playersSeg:AddButton({ Name = "Refresh grid with 3 items", Callback = function()
     grid:Refresh({ SAMPLE[2], SAMPLE[4], SAMPLE[6] })
 end })
+
+--==============================================================================
+-- 6b. ADVANCED DATA DISPLAYS  (tree · graph · radar · table)
+--==============================================================================
+local adv = win:AddTab({ Name = "Displays", Icon = "diamond" })
+
+local treeSec = adv:AddSection("Tree view")
+local treeCols = treeSec:AddColumns(2)
+-- an Instance root: children are read lazily, only when a node is expanded
+treeCols[1]:AddTree({ Name = "Explorer", Root = workspace, Depth = 1,
+    OnSelect = function(inst) Sypse:Log("INFO", "Picked " .. tostring(inst)) end })
+-- …or a plain Lua table, which makes it a JSON/config viewer
+local cfgTree = treeCols[2]:AddTree({
+    Name = "Config viewer", RootName = "config", Depth = 2,
+    Root = { aimbot = { enabled = true, smoothness = 42, key = "E" },
+             visuals = { esp = { boxes = true, names = false }, fill = 0.8 },
+             version = "1.0.0" },
+})
+treeSec:AddButtonRow({
+    { Name = "Refresh tree", Callback = function() cfgTree:Refresh() end },
+    { Name = "Point at Lighting", Callback = function() cfgTree:SetRoot(game:GetService("Lighting")) end },
+})
+
+local graphSec = adv:AddSection("Line graph")
+local graph = graphSec:AddGraph({
+    Name = "Last 60 seconds", Window = 60, Interval = 1,
+    Series = {
+        { Name = "FPS", Color = "Accent", Get = function() return workspace:GetRealPhysicsFPS() end },
+        { Name = "Ping", Color = "Accent2", Get = function() return Players.LocalPlayer:GetNetworkPing() * 1000 end },
+    },
+})
+local manual = graphSec:AddGraph({ Name = "Manual feed", Window = 40, Series = { { Name = "Value", Color = "Ok" } }, Sparklines = false })
+graphSec:AddButtonRow({
+    { Name = "Push random", Callback = function() manual:Push("Value", math.random(0, 100)) end },
+    { Name = "Clear", Callback = function() manual:Clear() end },
+    { Name = "Show Ping", Callback = function() graph:SetSeries("Ping") end },
+})
+
+local radarSec = adv:AddSection("Radar")
+local radarCols = radarSec:AddColumns(2)
+local radar = radarCols[1]:AddRadar({ Name = "Radar", Range = 250, Rotate = true })
+local squareRadar = radarCols[2]:AddRadar({ Name = "Square", Shape = "square", Range = 125, Ranges = { 75, 125, 300 }, Rotate = false })
+local function randomBlips()
+    local pts = {}
+    for i = 1, 8 do
+        table.insert(pts, { Position = Vector2.new(math.random(-400, 400), math.random(-400, 400)),
+            Kind = ({ "danger", "warn", "ok", "accent", "dim" })[math.random(1, 5)], Label = "blip " .. i })
+    end
+    return pts
+end
+radar:SetPoints(randomBlips())
+squareRadar:SetPoints(randomBlips())
+radarSec:AddButtonRow({
+    { Name = "Shuffle blips", Callback = function() radar:SetPoints(randomBlips()); squareRadar:SetPoints(randomBlips()) end },
+    { Name = "Range 500", Callback = function() radar:SetRange(500) end },
+})
+
+local tableSec = adv:AddSection("Data table")
+local rows = {
+    { name = "kaiblox", kills = 24, deaths = 8, kd = 3.0, cash = 12400, ping = 42 },
+    { name = "Vortex_9", kills = 12, deaths = 14, kd = 0.86, cash = 5200, ping = 88 },
+    { name = "mochi_pop", kills = 31, deaths = 15, kd = 2.07, cash = 18900, ping = 155 },
+    { name = "RBX_Ghost", kills = 3, deaths = 9, kd = 0.33, cash = 800, ping = 61 },
+    { name = "sunnyd", kills = 18, deaths = 9, kd = 2.0, cash = 9100, ping = 37 },
+}
+local board = tableSec:AddTable({
+    Name = "Leaderboard", Rows = rows, Sort = { Key = "kd", Dir = "desc" },
+    Columns = {
+        { Key = "name", Label = "Player", Width = "2fr" },
+        { Key = "kills", Label = "K", Width = "0.7fr", Numeric = true },
+        { Key = "deaths", Label = "D", Width = "0.7fr", Numeric = true, Dim = true },
+        { Key = "kd", Label = "K/D", Width = "0.8fr", Numeric = true,
+            Format = function(v) return string.format("%.2f", v) end,
+            Color = function(v) if v >= 2 then return "Ok" elseif v < 1 then return "Dim" end return nil end },
+        { Key = "cash", Label = "Cash", Width = "1fr", Numeric = true, Format = function(v) return "$" .. v end },
+        { Key = "ping", Label = "Ping", Width = "0.8fr", Numeric = true, Format = function(v) return v .. " ms" end,
+            Color = function(v) if v < 60 then return "Ok" elseif v < 120 then return "Warn" end return "Danger" end },
+    },
+    OnSelect = function(row) toast("Row selected", row.name, "accent") end,
+})
+tableSec:AddSearchBar({ Placeholder = "Filter rows…", Target = board })
+tableSec:AddButtonRow({
+    { Name = "Sort by cash", Callback = function() board:Sort("cash", "desc") end },
+    { Name = "Add a row", Callback = function()
+        board:AddRow({ name = "new_" .. math.random(10, 99), kills = math.random(0, 40), deaths = math.random(1, 20),
+            kd = math.random(10, 400) / 100, cash = math.random(100, 30000), ping = math.random(20, 250) })
+    end },
+})
 
 --==============================================================================
 -- 7. CONFIG
