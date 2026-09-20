@@ -14,6 +14,7 @@ local Sypse = require(script.Parent:WaitForChild("SypseUI"))
 
 ```lua
 local Sypse = loadstring(game:HttpGet("https://raw.githubusercontent.com/Sypse/Sypse-UI/refs/heads/main/SypseUI.lua"))()
+
 ```
 
 The library parents to `gethui()` when available, then `CoreGui` if the script has permission, and otherwise `PlayerGui`. Executor globals (`writefile`, `readfile`, `listfiles`, `delfile`, `setclipboard`, `gethui`, `syn.protect_gui`, `cloneref`) are all feature-detected. Without file I/O, configs are kept in memory for the session; without a clipboard, Export prints the JSON to the output.
@@ -22,7 +23,7 @@ The library parents to `gethui()` when available, then `CoreGui` if the script h
 
 ```lua
 local win = Sypse:CreateWindow({
-    Title = "Sypse UI", Version = "v1.0.4", Subtitle = "attached to · Blade Arena",
+    Title = "Sypse UI", Version = "v1.0.5", Subtitle = "attached to · Blade Arena",
     Theme = "Acrylic", Size = UDim2.fromOffset(980, 620),
     ToggleKey = Enum.KeyCode.RightShift, LiveStats = true,
 })
@@ -59,7 +60,7 @@ win:SaveConfig("legit.json")
 | `Sypse:Every(seconds, fn)` | Managed repeating timer, returns `stop()`. Stopped by `Destroy`. |
 | `Sypse:SaveConfig / LoadConfig / ListConfigs / DeleteConfig (name, folder)` | Flag persistence as JSON. |
 | `Sypse:ExportConfig()` / `Sypse:ApplyConfig(jsonOrTable)` | Serialise / apply without touching disk. |
-| `Sypse:SetBlur(mode [, size])` | Background blur for every open window and the default for new ones. `false` (default), `true` (all themes), `"theme"` (follow each theme's `Blur` token). `Sypse:GetBlur()` reads it back. |
+| `Sypse:SetBlur(mode [, size])` | Background blur for every open window and the default for new ones. `false` (default), `true` (all themes), `"theme"` (follow each theme's `Blur` token). `size` pins a blur size; `false` or `"theme"` unpins it so each theme's `BlurSize` applies. `Sypse:GetBlur()` reads it back. |
 | `Sypse:Toggle()` / `Sypse:Destroy()` | Toggle the active window / tear down everything (instances, connections, timers). |
 | `Sypse.Tracking = false` | Disables hair-space letter tracking (see Notes). |
 
@@ -108,7 +109,7 @@ The title-bar filter box (focus it with `/`) filters the current page's controls
 
 ## Themes
 
-Six built-ins: **Acrylic** (dark glass), **Daylight** (light dashboard), **Terminal** (monospace, uppercase), **Voltage** (neon, glow), **Marshmallow** (soft pastel, round), **Blocky** (chunky 2.5 px borders, hard offset shadow). A theme change swaps colours, fonts, corner radius, stroke thickness, shadow style and text casing.
+Ten built-ins: **Acrylic** (dark glass), **Daylight** (light dashboard), **Terminal** (monospace, uppercase), **Voltage** (neon, glow), **Marshmallow** (soft pastel, round), **Blocky** (chunky 2.5 px borders, hard offset shadow), **Ember** (warm amber dark, soft drop + amber halo), **Paper** (high-contrast print: zero radius, 1.5 px black borders, uppercase, black accent), **Abyss** (deep teal, big radius, inner top highlight, optional 14 px blur), **Cassette** (VHS retro with a chromatic-aberration shadow). A theme change swaps colours, fonts, corner radius, stroke thickness, shadow style and text casing.
 
 ### Token reference
 
@@ -116,7 +117,7 @@ Any `Color3` token can be paired with `<Token>Transparency` (0 = opaque, 1 = inv
 
 | Token | Purpose |
 |---|---|
-| `Background` (+ `BackgroundGradient`) | Window base layer under `Panel`; gives Acrylic its tinted glass. |
+| `Background` (+ `BackgroundGradient`) | Window base layer under `Panel`; gives Acrylic its tinted glass. The gradient is `{ c1, c2, c3, Rotation = deg, Mid = 0..1 }`, where `Rotation` is CSS degrees − 90 (0 = left→right, 90 = top→bottom). |
 | `Stage` | Reserved (the mockup's page backdrop); kept for round-tripping. |
 | `Panel` | Window body. |
 | `Panel2` | Raised controls: fields, secondary buttons, title bar. |
@@ -134,8 +135,12 @@ Any `Color3` token can be paired with `<Token>Transparency` (0 = opaque, 1 = inv
 | `Font`, `FontMono` | Family name (`"Nunito"`), asset path, `rbxassetid://` family, `Font` object, or `Enum.Font`. |
 | `CornerRadius`, `CornerRadiusSmall` | Radius in px for window/modals and rows/buttons/fields. |
 | `StrokeThickness` | `UIStroke.Thickness` for primary borders. |
-| `Shadow` | `"soft"`, `"none"`, `"glow"`, `"hard"`. With `ShadowColor`, `ShadowTransparency`, `ShadowOffset` (Vector2, hard only). |
-| `ButtonShadow` | `"none"`, `"hard"`, `"glow"` under primary buttons. |
+| `Shadow` | `"soft"`, `"none"`, `"glow"`, `"hard"`, `"chroma"` (two solid offset blocks over a soft drop — the VHS look). With `ShadowColor`, `ShadowTransparency`, `ShadowOffset` (Vector2, hard only). |
+| `ShadowGlow`, `ShadowGlowTransparency` | Optional halo layered on top of a soft shadow (Ember). Independent of `Shadow = "glow"`. |
+| `ShadowChromaA` / `ShadowChromaB` (+ `…Transparency`, `…Offset`) | The two blocks of a `"chroma"` shadow. |
+| `InnerHighlight`, `InnerHighlightTransparency` | 1 px highlight along the window's top edge (Abyss). Omit for none. |
+| `BlurSize` | Blur size used when a window is in `"theme"` blur mode without a pinned size. |
+| `ButtonShadow` | `"none"`, `"hard"`, `"glow"`, `"chroma"` under primary buttons. |
 | `Blur` | Only consulted in `"theme"` blur mode; windows default to no blur. |
 | `TextCase` | `"none"` or `"upper"` for buttons, tab labels, section headers and titles. |
 | `LetterSpacing` | Tracking for uppercase themes, in hair-space units. |

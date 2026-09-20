@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.4 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.5 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.4"
+Sypse.Version = "1.0.5"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -270,7 +270,9 @@ end
 
       Background   window base layer (behind Panel). With a transparent Panel
                    this is what gives Acrylic its tinted-glass look.
-      BackgroundGradient  optional { Color3, Color3, Color3 } drawn over Background.
+      BackgroundGradient  optional { Color3, Color3, Color3, Rotation = deg, Mid = 0..1 }
+                   drawn on the window backdrop. Rotation is CSS degrees - 90
+                   (0 = left→right, 90 = top→bottom); Mid moves the middle stop.
       Stage        reserved — the mockup's page backdrop. Unused in-game; kept
                    so theme tables round-trip with the HTML mockup.
       Panel        window body.
@@ -298,12 +300,21 @@ end
       CornerRadius          UICorner radius (px) for the window, modals.
       CornerRadiusSmall     UICorner radius (px) for rows, buttons, fields.
       StrokeThickness       UIStroke.Thickness for primary borders (Blocky: 2.5).
-      Shadow                "soft" | "none" | "glow" | "hard"
-                              soft  large blurred drop shadow (layered frames)
-                              none  no shadow
-                              glow  Accent-coloured halo (ShadowColor)
-                              hard  solid offset rectangle, no blur (ShadowOffset)
+      Shadow                "soft" | "none" | "glow" | "hard" | "chroma"
+                              soft    large blurred drop shadow (layered frames)
+                              none    no shadow
+                              glow    Accent-coloured halo (ShadowColor)
+                              hard    solid offset rectangle, no blur (ShadowOffset)
+                              chroma  two solid offset blocks in opposite directions
+                                      over a soft drop (the VHS aberration look)
       ShadowColor, ShadowTransparency, ShadowOffset (Vector2, for "hard")
+      ShadowGlow, ShadowGlowTransparency   optional halo layered on top of a soft
+                            shadow (Ember). Independent of Shadow = "glow".
+      ShadowChromaA/B, …Transparency, …Offset   the two "chroma" blocks.
+      InnerHighlight, InnerHighlightTransparency   1px highlight along the window's
+                            top edge (Abyss). Omit for none.
+      BlurSize              BlurEffect size used when a window is in "theme" blur
+                            mode and has no explicit size.
       ButtonShadow          "none" | "hard" | "glow" — under primary buttons.
       Blur                  true → BlurEffect on the camera while a window is open.
       TextCase              "none" | "upper" — applied to buttons, tab labels,
@@ -503,8 +514,132 @@ Themes.Blocky = {
     TextCase = "none", LetterSpacing = 0,
 }
 
+
+Themes.Ember = {
+    Name = "Ember", Description = "warm amber dark",
+    Background = hex"1C1512",
+    -- radial highlight from the top-right in the mockup; approximated with a
+    -- diagonal gradient (Rotation is CSS-degrees - 90).
+    BackgroundGradient = { hex"3A2216", hex"1C1512", hex"120D0B", Rotation = 135, Mid = 0.48 },
+    Stage = hex"FFFFFF", StageTransparency = 0.975,
+    Panel = hex"1B1512", Panel2 = hex"2A211B", Panel3 = hex"150F0D",
+    Stroke = hex"3B2C22", Stroke2 = hex"2A1F19", Track = hex"31251E", Knob = hex"FFF3E6",
+    Text = hex"F6E9DC", Dim = hex"A98A72",
+    Tooltip = hex"241A15", Console = hex"0E0A08", ConsoleText = hex"F6E9DC",
+    Accent = hex"FF9034", AccentFg = hex"1A0E05",
+    AccentSoft = hex"FF9034", AccentSoftTransparency = 0.86,
+    AccentLine = hex"FF9034", AccentLineTransparency = 0.66,
+    Accent2 = hex"FFCE5C",
+    Ok = hex"8FD66B",     OkSoft = hex"8FD66B",     OkSoftTransparency = 0.87,     OkLine = hex"8FD66B",     OkLineTransparency = 0.7,
+    Warn = hex"FFCE5C",   WarnSoft = hex"FFCE5C",   WarnSoftTransparency = 0.87,   WarnLine = hex"FFCE5C",   WarnLineTransparency = 0.7,
+    Danger = hex"FF6B57", DangerSoft = hex"FF6B57", DangerSoftTransparency = 0.87, DangerLine = hex"FF6B57", DangerLineTransparency = 0.68,
+    Placeholder = hex"FF9034", PlaceholderTransparency = 0.9,
+    Placeholder2 = hex"FF9034", Placeholder2Transparency = 0.97,
+    Scrim = hex"0E0A08", ScrimTransparency = 0.35,
+    Font = "GothamSSm",          -- Sora substitute
+    FontMono = "RobotoMono",     -- IBM Plex Mono substitute
+    CornerRadius = 10, CornerRadiusSmall = 8,
+    StrokeThickness = 1,
+    -- soft black drop plus a faint amber halo on top of it
+    Shadow = "soft", ShadowColor = hex"000000", ShadowTransparency = 0.62,
+    ShadowGlow = hex"FF9034", ShadowGlowTransparency = 0.93,
+    ButtonShadow = "glow",
+    Blur = false,
+    TextCase = "none", LetterSpacing = 0,
+}
+
+Themes.Paper = {
+    Name = "Paper", Description = "high-contrast mono",
+    Background = hex"EFEDE7", Stage = hex"E4E1D8",
+    Panel = hex"FBFAF6", Panel2 = hex"EDEAE1", Panel3 = hex"F5F3EC",
+    Stroke = hex"111111", Stroke2 = hex"C9C5B8", Track = hex"DDD9CD", Knob = hex"FBFAF6",
+    Text = hex"111111", Dim = hex"6E6A5E",
+    Tooltip = hex"FBFAF6", Console = hex"111111", ConsoleText = hex"FBFAF6",
+    -- the accent IS black: accent buttons are solid #111 with paper-white text
+    Accent = hex"111111", AccentFg = hex"FBFAF6",
+    AccentSoft = hex"111111", AccentSoftTransparency = 0.93,
+    AccentLine = hex"111111",
+    Accent2 = hex"8A3FFC",
+    Ok = hex"1C6B3C",     OkSoft = hex"1C6B3C",     OkSoftTransparency = 0.9,      OkLine = hex"1C6B3C",
+    Warn = hex"8A5A00",   WarnSoft = hex"8A5A00",   WarnSoftTransparency = 0.9,    WarnLine = hex"8A5A00",
+    Danger = hex"B0202E", DangerSoft = hex"B0202E", DangerSoftTransparency = 0.91, DangerLine = hex"B0202E",
+    Placeholder = hex"111111", PlaceholderTransparency = 0.9,
+    Placeholder2 = hex"111111", Placeholder2Transparency = 0.98,
+    Scrim = hex"111111", ScrimTransparency = 0.55,
+    Font = "RobotoMono",         -- IBM Plex Mono substitute (both roles)
+    FontMono = "RobotoMono",
+    CornerRadius = 0, CornerRadiusSmall = 0,
+    StrokeThickness = 1.5,
+    Shadow = "none", ShadowColor = hex"111111", ShadowTransparency = 0.85,
+    ButtonShadow = "none",
+    Blur = false,
+    TextCase = "upper", LetterSpacing = 1,
+}
+
+Themes.Abyss = {
+    Name = "Abyss", Description = "deep teal",
+    Background = hex"03242A",
+    BackgroundGradient = { hex"02181C", hex"03242A", hex"010F12", Rotation = 80, Mid = 0.46 },
+    Stage = hex"78FFF0", StageTransparency = 0.97,
+    Panel = hex"062A31", Panel2 = hex"0B3B44", Panel3 = hex"042227",
+    Stroke = hex"0F4B55", Stroke2 = hex"0A3A42", Track = hex"0C3B44", Knob = hex"E4FBFA",
+    Text = hex"DCF6F4", Dim = hex"6FA6A9",
+    Tooltip = hex"07323A", Console = hex"011317", ConsoleText = hex"DCF6F4",
+    Accent = hex"2BE0C4", AccentFg = hex"012622",
+    AccentSoft = hex"2BE0C4", AccentSoftTransparency = 0.87,
+    AccentLine = hex"2BE0C4", AccentLineTransparency = 0.68,
+    Accent2 = hex"5AA9FF",
+    Ok = hex"2BE0C4",     OkSoft = hex"2BE0C4",     OkSoftTransparency = 0.87,     OkLine = hex"2BE0C4",     OkLineTransparency = 0.7,
+    Warn = hex"FFC98A",   WarnSoft = hex"FFC98A",   WarnSoftTransparency = 0.87,   WarnLine = hex"FFC98A",   WarnLineTransparency = 0.7,
+    Danger = hex"FF7C9B", DangerSoft = hex"FF7C9B", DangerSoftTransparency = 0.87, DangerLine = hex"FF7C9B", DangerLineTransparency = 0.68,
+    Placeholder = hex"2BE0C4", PlaceholderTransparency = 0.9,
+    Placeholder2 = hex"2BE0C4", Placeholder2Transparency = 0.97,
+    Scrim = hex"011317", ScrimTransparency = 0.35,
+    Font = "GothamSSm",          -- Sora substitute
+    FontMono = "RobotoMono",     -- IBM Plex Mono substitute
+    CornerRadius = 18, CornerRadiusSmall = 13,
+    StrokeThickness = 1,
+    Shadow = "soft", ShadowColor = hex"001418", ShadowTransparency = 0.7,
+    InnerHighlight = hex"FFFFFF", InnerHighlightTransparency = 0.95, -- 1px top edge
+    ButtonShadow = "glow",
+    Blur = true, BlurSize = 14,  -- only used in "theme" blur mode
+    TextCase = "none", LetterSpacing = 0,
+}
+
+Themes.Cassette = {
+    Name = "Cassette", Description = "VHS retro",
+    Background = hex"1A1424",
+    BackgroundGradient = { hex"241A2E", hex"1A1424", hex"120E1A", Rotation = 90, Mid = 0.6 },
+    Stage = hex"FFFFFF", StageTransparency = 0.975,
+    Panel = hex"241B31", Panel2 = hex"332643", Panel3 = hex"1C1528",
+    Stroke = hex"463358", Stroke2 = hex"332543", Track = hex"3A2B4B", Knob = hex"FFF6E8",
+    Text = hex"F3E7D6", Dim = hex"A18BB4",
+    Tooltip = hex"2C2039", Console = hex"140F1D", ConsoleText = hex"F3E7D6",
+    Accent = hex"FF6B9D", AccentFg = hex"1A0A14",
+    AccentSoft = hex"FF6B9D", AccentSoftTransparency = 0.86,
+    AccentLine = hex"FF6B9D", AccentLineTransparency = 0.66,
+    Accent2 = hex"48D6C8",
+    Ok = hex"48D6C8",     OkSoft = hex"48D6C8",     OkSoftTransparency = 0.87,     OkLine = hex"48D6C8",     OkLineTransparency = 0.7,
+    Warn = hex"FFB84D",   WarnSoft = hex"FFB84D",   WarnSoftTransparency = 0.87,   WarnLine = hex"FFB84D",   WarnLineTransparency = 0.7,
+    Danger = hex"FF5252", DangerSoft = hex"FF5252", DangerSoftTransparency = 0.87, DangerLine = hex"FF5252", DangerLineTransparency = 0.68,
+    Placeholder = hex"FF6B9D", PlaceholderTransparency = 0.88,
+    Placeholder2 = hex"48D6C8", Placeholder2Transparency = 0.95,
+    Scrim = hex"120E1A", ScrimTransparency = 0.35,
+    Font = "TitilliumWeb",       -- Chakra Petch substitute
+    FontMono = "RobotoMono",     -- JetBrains Mono substitute
+    CornerRadius = 7, CornerRadiusSmall = 5,
+    StrokeThickness = 1,
+    -- chromatic aberration: teal block down-right, pink block up-left, soft black drop
+    Shadow = "chroma", ShadowColor = hex"000000", ShadowTransparency = 0.6,
+    ShadowChromaA = hex"48D6C8", ShadowChromaATransparency = 0.65, ShadowChromaAOffset = Vector2.new(4, 4),
+    ShadowChromaB = hex"FF6B9D", ShadowChromaBTransparency = 0.72, ShadowChromaBOffset = Vector2.new(-4, -4),
+    ButtonShadow = "chroma",
+    Blur = false,
+    TextCase = "upper", LetterSpacing = 1,
+}
+
 -- Order used by theme pickers.
-local THEME_ORDER = { "Acrylic", "Daylight", "Terminal", "Voltage", "Marshmallow", "Blocky" }
+local THEME_ORDER = { "Acrylic", "Daylight", "Terminal", "Voltage", "Marshmallow", "Blocky", "Ember", "Paper", "Abyss", "Cassette" }
 
 -- Build a complete theme from a (possibly partial) table merged over `base`.
 -- Rule for partial themes: if you override a colour token but NOT its
@@ -1055,7 +1190,7 @@ local function ShadowLayers(host, radiusToken, scale, zindex)
         local layer = Frame({
             Name = "Shadow" .. i, BackgroundTransparency = 1, ZIndex = zindex or 0, Parent = host,
             Theme = {
-                Visible = function(t) return t.Shadow == "soft" or t.Shadow == "glow" end,
+                Visible = function(t) return t.Shadow == "soft" or t.Shadow == "glow" or t.Shadow == "chroma" end,
                 BackgroundColor3 = function(t)
                     local glow = t.Shadow == "glow"
                     local color = glow and (t.ShadowColor or t.Accent) or (t.ShadowColor or Color3.new())
@@ -1073,6 +1208,44 @@ local function ShadowLayers(host, radiusToken, scale, zindex)
         Corner(layer, function(t) return (t[radiusToken] or 10) + sp end)
         table.insert(layers, layer)
     end
+    -- Optional accent halo layered ON TOP of a soft shadow (theme.ShadowGlow).
+    for i, spread in ipairs({ 16, 30 }) do
+        local sp = spread * scale
+        local layer = Frame({
+            Name = "ShadowGlow" .. i, BackgroundTransparency = 1, ZIndex = zindex or 0, Parent = host,
+            Size = UDim2.new(1, sp * 2, 1, sp * 2), Position = UDim2.new(0, -sp, 0, -sp),
+            Theme = {
+                Visible = function(t) return t.ShadowGlow ~= nil and t.Shadow ~= "none" end,
+                BackgroundColor3 = function(t)
+                    local base = 1 - (t.ShadowGlowTransparency or 0.93)
+                    return t.ShadowGlow or t.Accent, 1 - base / 2
+                end,
+            },
+        })
+        Corner(layer, function(t) return (t[radiusToken] or 10) + sp end)
+        table.insert(layers, layer)
+    end
+
+    -- "chroma": two solid offset blocks in opposite directions (VHS aberration).
+    for _, side in ipairs({ "A", "B" }) do
+        local chroma = Frame({
+            Name = "ShadowChroma" .. side, BackgroundTransparency = 0, ZIndex = zindex or 0, Parent = host,
+            Size = UDim2.fromScale(1, 1),
+            Theme = {
+                Visible = function(t) return t.Shadow == "chroma" and t["ShadowChroma" .. side] ~= nil end,
+                BackgroundColor3 = function(t)
+                    return t["ShadowChroma" .. side] or t.Accent, t["ShadowChroma" .. side .. "Transparency"] or 0.6
+                end,
+                Position = function(t)
+                    local o = t["ShadowChroma" .. side .. "Offset"] or Vector2.new(side == "A" and 4 or -4, side == "A" and 4 or -4)
+                    return UDim2.fromOffset(o.X * scale, o.Y * scale)
+                end,
+            },
+        })
+        Corner(chroma, radiusToken)
+        table.insert(layers, chroma)
+    end
+
     local hard = Frame({
         Name = "ShadowHard", BackgroundTransparency = 0, ZIndex = zindex or 0, Parent = host,
         Size = UDim2.fromScale(1, 1),
@@ -1095,18 +1268,20 @@ local function ButtonShadow(host, zindex)
     local s = Frame({
         Name = "BtnShadow", ZIndex = zindex or 0, Parent = host, BackgroundTransparency = 1,
         Theme = {
-            Visible = function(t) return t.ButtonShadow == "hard" or t.ButtonShadow == "glow" end,
+            Visible = function(t) return t.ButtonShadow == "hard" or t.ButtonShadow == "glow" or t.ButtonShadow == "chroma" end,
             BackgroundColor3 = function(t)
                 if t.ButtonShadow == "hard" then return t.Stroke, 0 end
+                if t.ButtonShadow == "chroma" then return t.ShadowChromaA or t.Accent2, (t.ShadowChromaATransparency or 0.5) end
                 return t.Accent, 0.78
             end,
             Position = function(t)
                 if t.ButtonShadow == "hard" then return UDim2.fromOffset(3, 3) end
+                if t.ButtonShadow == "chroma" then return UDim2.fromOffset(2, 2) end
                 return UDim2.fromOffset(-2, 2)
             end,
             Size = function(t)
-                if t.ButtonShadow == "hard" then return UDim2.fromScale(1, 1) end
-                return UDim2.new(1, 4, 1, 4)
+                if t.ButtonShadow == "glow" then return UDim2.new(1, 4, 1, 4) end
+                return UDim2.fromScale(1, 1)
             end,
         },
     })
@@ -1277,7 +1452,7 @@ function Sypse:CreateWindow(o)
     self.BaseSize = o.Size or UDim2.fromOffset(980, 620)
     -- Blur: window option wins, else the library default (off unless Sypse:SetBlur set it).
     self.BlurMode = (o.Blur ~= nil) and o.Blur or Library.DefaultBlur
-    self.BlurSize = o.BlurSize or Library.DefaultBlurSize
+    self.BlurSize = o.BlurSize                     -- nil = follow the theme / library default
     self.Profile = o.Profile or "default.json"
 
     if o.Theme then Sypse:SetTheme(o.Theme, true) end
@@ -1322,11 +1497,21 @@ function Sypse:CreateWindow(o)
     New("UIGradient", { Rotation = 35, Parent = backdrop,
         Theme = {
             Enabled = function(t) return t.BackgroundGradient ~= nil end,
+            -- BackgroundGradient = { c1, c2, c3, Rotation = deg, Mid = 0..1 }
+            Rotation = function(t) return t.BackgroundGradient and (t.BackgroundGradient.Rotation or 35) or 35 end,
             Color = function(t)
                 local g = t.BackgroundGradient
                 if not g then return ColorSequence.new(Color3.new(1, 1, 1)) end
-                return ColorSequence.new({ ColorSequenceKeypoint.new(0, g[1]), ColorSequenceKeypoint.new(0.52, g[2] or g[1]), ColorSequenceKeypoint.new(1, g[3] or g[2] or g[1]) })
+                local mid = clamp(g.Mid or 0.52, 0.01, 0.99)
+                return ColorSequence.new({ ColorSequenceKeypoint.new(0, g[1]), ColorSequenceKeypoint.new(mid, g[2] or g[1]), ColorSequenceKeypoint.new(1, g[3] or g[2] or g[1]) })
             end,
+        } })
+
+    -- Optional 1px inner highlight along the top edge (theme.InnerHighlight).
+    Frame({ Name = "InnerHighlight", Size = UDim2.new(1, -24, 0, 1), Position = UDim2.fromOffset(12, 0), ZIndex = 3, Parent = canvas,
+        Theme = {
+            Visible = function(t) return t.InnerHighlight ~= nil end,
+            BackgroundColor3 = function(t) return t.InnerHighlight or Color3.new(1, 1, 1), t.InnerHighlightTransparency or 0.95 end,
         } })
     local surface = Frame({ Name = "Surface", Size = UDim2.fromScale(1, 1), Parent = canvas, Theme = { BackgroundColor3 = "Panel" } })
     Corner(surface, "CornerRadius")
@@ -1624,16 +1809,25 @@ function Window:BlurEnabled()
 end
 
 --- SetBlur(true | false | "theme" [, size]) — takes effect immediately.
+--- `size`: a number pins the blur size; nil leaves it as-is; false or "theme"
+--- clears the pin so the theme's BlurSize (or the library default) applies again.
 function Window:SetBlur(mode, size)
     if mode == nil then mode = true end
     self.BlurMode = mode
-    if size then self.BlurSize = size end
+    if size ~= nil then
+        self.BlurSize = (size ~= false and size ~= "theme") and size or nil
+    end
     self:_applyBlur()
     return self
 end
 
---- Returns the current mode and blur size.
-function Window:GetBlur() return self.BlurMode, self.BlurSize end
+--- Effective blur size: explicit > theme token > library default.
+function Window:_blurSize()
+    return self.BlurSize or CurrentTheme.BlurSize or Library.DefaultBlurSize
+end
+
+--- Returns the current mode and the effective blur size.
+function Window:GetBlur() return self.BlurMode, self:_blurSize() end
 
 function Window:_applyBlur()
     local want = self:BlurEnabled() and self.Visible and self.Alive
@@ -1649,9 +1843,11 @@ function Window:_applyBlur()
             end)
             if ok then
                 self._blur = b
-                tween(b, 0.2, { Size = self.BlurSize })
+                tween(b, 0.2, { Size = self:_blurSize() })
             end
         end
+    elseif want and self._blur then
+        tween(self._blur, 0.2, { Size = self:_blurSize() })
     elseif not want and self._blur then
         local b = self._blur
         self._blur = nil
@@ -4281,11 +4477,12 @@ end
        false    (default) never blur
        true     blur under every theme
        "theme"  follow each theme's Blur token (Acrylic only, out of the box)
-     `size` is the BlurEffect size (default 10). ]]
+     `size` is the BlurEffect size (default 10); false or "theme" clears a pinned
+     size so each theme's own BlurSize token applies. ]]
 function Sypse:SetBlur(mode, size)
     if mode == nil then mode = true end
     Library.DefaultBlur = mode
-    if size then Library.DefaultBlurSize = size end
+    if type(size) == "number" then Library.DefaultBlurSize = size end
     for _, w in ipairs(Library.Windows) do
         if w.Alive then w:SetBlur(mode, size) end
     end
