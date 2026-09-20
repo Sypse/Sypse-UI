@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.7 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.8 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.7"
+Sypse.Version = "1.0.8"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -3983,6 +3983,918 @@ function Container:AddConfigManager(o)
     refresh()
     ctl.Window, ctl.Container = win, self
     table.insert(self.Page.Controls, ctl)
+    return ctl
+end
+
+--==============================================================================
+-- §11b  ADVANCED DATA DISPLAYS — tree, graph, radar, table
+--==============================================================================
+-- All four are token-only (no literal colours) and restyle on SetTheme like
+-- every other component.
+
+-- Card with an uppercase mono caption and a right-hand slot.
+local function dataCard(container, name, caption, gap)
+    local card = Frame({
+        Name = name, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+        LayoutOrder = container:_lo(), Parent = container.Frame, Theme = { BackgroundColor3 = "Panel3" },
+    })
+    Corner(card, "CornerRadiusSmall")
+    Stroke(card, "Stroke2")
+    Pad(card, 13, 14)
+    List(card, "y", gap or 10)
+    local header = Frame({ Name = "Header", Size = UDim2.new(1, 0, 0, 14), LayoutOrder = 1, Parent = card })
+    Label(header, { Text = caption or name, TextSize = 10, Weight = "SemiBold", Mono = true, Case = "upper", Color = "Dim",
+        AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
+    local right = Frame({ Name = "HeaderRight", AutomaticSize = Enum.AutomaticSize.XY, AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, 0, 0.5, 0), Parent = header })
+    List(right, "x", 4, { VerticalAlignment = Enum.VerticalAlignment.Center, HorizontalAlignment = Enum.HorizontalAlignment.Right })
+    return card, header, right
+end
+
+-- Small pill used by the radar range selector and the graph series switch.
+local function pill(parent, text, order, isActive, onClick, opts)
+    opts = opts or {}
+    local b = Button({ AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = order, Parent = parent,
+        Theme = { BackgroundColor3 = function(t) if isActive() then return tk(t, "AccentSoft") end return t.Panel2, opts.Flat and 1 or (t.Panel2Transparency or 0) end } })
+    Corner(b, opts.Radius or "full")
+    Pad(b, opts.PadY or 4, opts.PadX or 8)
+    local s = opts.NoBorder and nil or Stroke(b, function(t) return tk(t, isActive() and "AccentLine" or "Stroke") end, 1)
+    local l = Label(b, { Text = text, TextSize = opts.TextSize or 9.5, Weight = "Medium", Mono = opts.Mono ~= false,
+        Color = function(t) return tk(t, isActive() and "Accent" or "Dim") end })
+    b.MouseButton1Click:Connect(onClick)
+    local parts = { b, l }
+    if s then table.insert(parts, s) end
+    return b, parts
+end
+
+--------------------------------------------------------------------------------
+-- Tree view (Explorer)
+--------------------------------------------------------------------------------
+--[[ AddTree({ Name, Root = workspace or a nested Lua table, Depth = 1,
+               Filter = function(child, parent) -> bool, OnSelect = function(node),
+               Height = 268, MaxNodes = 400 })
+     Children of an Instance root are walked lazily — only expanded nodes are
+     read, so pointing this at `game` never recurses the whole DataModel.
+     Handle: :Refresh(), :Expand(pathOrInstance), :Collapse(...), :Select(...),
+             :GetSelected(), :SetRoot(root) ]]
+
+local CLASS_ICON = {
+    Folder        = { token = "Accent2", radius = 3 },
+    Model         = { token = "Accent",  radius = "full" },
+    Script        = { token = "Ok",      radius = 0 },
+    LocalScript   = { token = "Ok",      radius = 0 },
+    ModuleScript  = { token = "Ok",      radius = 0 },
+    Part          = { token = "Dim",     radius = 2 },
+}
+local function iconFor(node)
+    if node.kind then return CLASS_ICON[node.kind] or { token = "Dim", radius = 2 } end
+    local inst = node.inst
+    if typeof(inst) == "Instance" then
+        local c = CLASS_ICON[inst.ClassName]
+        if c then return c end
+        if inst:IsA("BasePart") then return CLASS_ICON.Part end
+        if inst:IsA("LuaSourceContainer") then return CLASS_ICON.Script end
+        if inst:IsA("Model") then return CLASS_ICON.Model end
+        if inst:IsA("Folder") then return CLASS_ICON.Folder end
+        return { token = "Dim", radius = 2 }
+    end
+    if node.isBranch then return CLASS_ICON.Folder end
+    return { token = "Dim", radius = 2 }
+end
+
+function Container:AddTree(o)
+    o = o or {}
+    local ctl = newControl("Tree", o)
+    local card, _, headerRight = dataCard(self, "Tree_" .. ctl.Name, o.Name or "Explorer", 9)
+    ctl.Root = card
+    local selLabel = Label(headerRight, { Text = "—", TextSize = 10.5, Mono = true, Color = "Dim" })
+
+    local view = New("ScrollingFrame", {
+        Name = "View", Size = UDim2.new(1, 0, 0, o.Height or 268), LayoutOrder = 2, BorderSizePixel = 0,
+        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4,
+        ScrollingDirection = Enum.ScrollingDirection.Y, Parent = card,
+        Theme = { BackgroundColor3 = "Console", ScrollBarImageColor3 = "Stroke" },
+    })
+    Corner(view, 8); Stroke(view, "Stroke"); Pad(view, 4)
+    List(view, "y", 1)
+
+    local expanded, rows = {}, {}
+    local selectedKey
+    ctl.Selected = nil
+
+    local function keyOf(value, path) return typeof(value) == "Instance" and value or path end
+
+    -- children of a node, for either an Instance tree or a plain table
+    local function childrenOf(value, path)
+        local out = {}
+        if typeof(value) == "Instance" then
+            for _, c in ipairs(value:GetChildren()) do
+                if not o.Filter or o.Filter(c, value) then
+                    table.insert(out, { name = c.Name, value = c, inst = c, path = path .. "/" .. c.Name, branch = #c:GetChildren() > 0 })
+                end
+            end
+            table.sort(out, function(a, b) return a.name < b.name end)
+        elseif type(value) == "table" then
+            local keys = {}
+            for k in pairs(value) do table.insert(keys, k) end
+            table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+            for _, k in ipairs(keys) do
+                local v = value[k]
+                local isBranch = type(v) == "table"
+                local label = isBranch and tostring(k) or (tostring(k) .. " = " .. tostring(v))
+                if not o.Filter or o.Filter(v, value) then
+                    table.insert(out, { name = label, value = v, path = path .. "/" .. tostring(k), branch = isBranch and next(v) ~= nil, isBranch = isBranch })
+                end
+            end
+        end
+        return out
+    end
+
+    local function countOf(node)
+        if typeof(node.value) == "Instance" then return #node.value:GetChildren() end
+        if type(node.value) == "table" then
+            local n = 0
+            for _ in pairs(node.value) do n += 1 end
+            return n
+        end
+        return 0
+    end
+
+    local function makeRow(node, depth, order)
+        local key = keyOf(node.value, node.path)
+        local st = { sel = selectedKey == key }
+        local row = Button({ Name = "Node", Size = UDim2.new(1, 0, 0, 22), LayoutOrder = order, Parent = view,
+            Theme = { BackgroundColor3 = function(t) if st.sel then return tk(t, "AccentSoft") end return t.Panel2, 1 end } })
+        Corner(row, 5)
+        local fg = function(t) return tk(t, st.sel and "Accent" or "Text") end
+        local x = depth * 16 + 10
+        if node.branch then
+            local caret = Chevron(row, fg, { Size = UDim2.fromOffset(10, 10), AnchorPoint = Vector2.new(0, 0.5),
+                Position = UDim2.new(0, x - 10, 0.5, 0), Rotation = expanded[key] and 0 or -90 })
+            for _, d in ipairs(caret:GetDescendants()) do table.insert(rows, d) end
+        end
+        local ic = iconFor(node)
+        local icon = Frame({ Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, x + 3, 0.5, 0),
+            BackgroundTransparency = 0, Parent = row, Theme = { BackgroundColor3 = function(t) return tk(t, ic.token) end } })
+        Corner(icon, ic.radius)
+        local lbl = Label(row, { Text = node.name, TextSize = 11.5, Mono = true, Truncate = true, Color = fg,
+            Position = UDim2.fromOffset(x + 18, 0), Size = UDim2.new(1, -(x + 52), 1, 0) })
+        local n = countOf(node)
+        local cnt = Label(row, { Text = n > 0 and tostring(n) or "", TextSize = 9.5, Mono = true, AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, -8, 0.5, 0), Color = function(t) local c = fg(t); return c, 0.55 end })
+        row.MouseButton1Click:Connect(function()
+            selectedKey = key
+            ctl.Selected = node.value
+            selLabel.Text = node.name
+            if node.branch then expanded[key] = not expanded[key] end
+            safeCall(o.OnSelect, node.value, node)
+            ctl:Refresh()
+        end)
+        return row
+    end
+
+    local maxNodes = o.MaxNodes or 400
+    function ctl:Refresh()
+        for _, r in ipairs(rows) do if r.Parent then r:Destroy() end end
+        rows = {}
+        local order, shown = 0, 0
+        local function walk(node, depth)
+            if shown >= maxNodes then return end
+            order += 1
+            shown += 1
+            table.insert(rows, makeRow(node, depth, order))
+            local key = keyOf(node.value, node.path)
+            if node.branch and expanded[key] then
+                for _, child in ipairs(childrenOf(node.value, node.path)) do walk(child, depth + 1) end
+            end
+        end
+        local root = self.RootValue
+        local rootName = typeof(root) == "Instance" and root.Name or (o.RootName or "root")
+        walk({ name = rootName, value = root, inst = typeof(root) == "Instance" and root or nil, path = rootName,
+            branch = true, isBranch = true }, 0)
+        return shown
+    end
+
+    -- Accepts an Instance, a table node, or a "Root/Child/GrandChild" path string.
+    local function resolveTarget(target)
+        if type(target) ~= "string" then return target end
+        local value, path = ctl.RootValue, nil
+        for i, part in ipairs(string.split(target, "/")) do
+            if i == 1 then
+                path = part
+            else
+                path = path .. "/" .. part
+                if typeof(value) == "Instance" then
+                    value = value:FindFirstChild(part)
+                elseif type(value) == "table" then
+                    value = value[part] or value[tonumber(part)]
+                else
+                    value = nil
+                end
+                if value == nil then return target end -- fall back to the raw key
+            end
+        end
+        return keyOf(value, path)
+    end
+    function ctl:Expand(target)
+        if target == nil then return end
+        expanded[resolveTarget(target)] = true
+        self:Refresh()
+    end
+    function ctl:Collapse(target)
+        if target == nil then return end
+        expanded[resolveTarget(target)] = nil
+        self:Refresh()
+    end
+    function ctl:Select(target)
+        selectedKey = target
+        self.Selected = target
+        selLabel.Text = typeof(target) == "Instance" and target.Name or tostring(target)
+        self:Refresh()
+    end
+    function ctl:GetSelected() return self.Selected end
+    function ctl:SetRoot(root)
+        self.RootValue = root
+        expanded = {}
+        selectedKey = nil
+        self:Refresh()
+    end
+    function ctl:Filter(q)
+        q = string.lower(q or "")
+        local n = 0
+        for _, r in ipairs(rows) do
+            if r:IsA("TextButton") then
+                local lbl = r:FindFirstChildWhichIsA("TextLabel")
+                local ok = q == "" or (lbl and string.find(string.lower(lbl.Text), q, 1, true) ~= nil)
+                r.Visible = ok
+                if ok then n += 1 end
+            end
+        end
+        return n
+    end
+    function ctl:_total() return #rows end
+
+    ctl.RootValue = o.Root or workspace
+    -- expand the first `Depth` levels up front (lazily below that)
+    local function preExpand(value, path, depth)
+        if depth <= 0 then return end
+        expanded[keyOf(value, path)] = true
+        for _, child in ipairs(childrenOf(value, path)) do
+            if child.branch then preExpand(child.value, child.path, depth - 1) end
+        end
+    end
+    local rootName = typeof(ctl.RootValue) == "Instance" and ctl.RootValue.Name or (o.RootName or "root")
+    preExpand(ctl.RootValue, rootName, o.Depth or 1)
+    ctl:Refresh()
+
+    ctl.Window, ctl.Container = self.Window, self
+    table.insert(self.Page.Controls, ctl)
+    table.insert(self.Window.Controls, ctl)
+    return ctl
+end
+
+--------------------------------------------------------------------------------
+-- Line graph
+--------------------------------------------------------------------------------
+--[[ AddGraph({ Name = "Last 60 seconds",
+                Series = { { Name = "FPS", Color = "Accent", Get = fn }, … },
+                Window = 60, Interval = 1, Height = 92, Sparklines = true })
+     Samples on a timer (never RenderStepped) and draws with a reused pool of
+     rotated frames — nothing is created or destroyed per sample.
+     Handle: :Push(seriesName, value), :Clear(), :SetSeries(name), :GetSeries() ]]
+
+--[[ Returns draw(points, w, h) using a reusable pool of rotated frames.
+     Two things to know about Roblox here:
+       * ClipsDescendants does NOT clip a rotated GuiObject, so the geometry has
+         to stay inside the plot by construction — we clamp instead of relying on
+         the parent to crop.
+       * Semi-transparent fill columns must tile exactly: overlapping them makes
+         every overlap band twice as opaque, which reads as vertical striping. ]]
+local function linePool(parent, colorSpec, thickness, fillSpec)
+    local segs, cols = {}, {}
+    local function seg(i)
+        local f = segs[i]
+        if not f then
+            f = Frame({ Name = "Seg", AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 0, ZIndex = 3, Parent = parent,
+                Size = UDim2.fromOffset(0, thickness), Theme = { BackgroundColor3 = colorSpec } })
+            Corner(f, thickness / 2)
+            segs[i] = f
+        end
+        return f
+    end
+    local function col(i)
+        local f = cols[i]
+        if not f then
+            f = Frame({ Name = "Fill", BackgroundTransparency = 0, ZIndex = 2, Parent = parent,
+                Theme = { BackgroundColor3 = function(t)
+                    local c = resolveSpec(colorSpec, t, nil)
+                    return c, 0.86 -- 14% area fill
+                end } })
+            cols[i] = f
+        end
+        return f
+    end
+    return function(pts, h, w)
+        local n = #pts
+        for i = 1, math.max(#segs, math.max(0, n - 1)) do
+            local f = segs[i]
+            if i <= n - 1 then
+                local a, b = pts[i], pts[i + 1]
+                local dx, dy = b.X - a.X, b.Y - a.Y
+                local len = math.sqrt(dx * dx + dy * dy)
+                local s = seg(i)
+                s.Position = UDim2.fromOffset(a.X, a.Y)
+                s.Size = UDim2.fromOffset(math.max(len, 1), thickness)
+                s.Rotation = math.deg(math.atan2(dy, dx))
+                s.Visible = true
+            elseif f then
+                f.Visible = false
+            end
+        end
+        if fillSpec ~= false then
+            -- columns tile edge to edge: each spans [midpoint(i-1,i), midpoint(i,i+1)]
+            -- snapped to whole pixels, so neighbours abut exactly instead of overlapping
+            for i = 1, math.max(#cols, n) do
+                local f = cols[i]
+                if i <= n then
+                    local p = pts[i]
+                    local leftEdge = (i == 1) and 0 or (pts[i - 1].X + p.X) / 2
+                    local rightEdge = (i == n) and w or (p.X + pts[i + 1].X) / 2
+                    local x0 = math.max(0, math.floor(leftEdge + 0.5))
+                    local x1 = math.min(w, math.floor(rightEdge + 0.5))
+                    local c = col(i)
+                    c.Position = UDim2.fromOffset(x0, p.Y)
+                    c.Size = UDim2.fromOffset(math.max(0, x1 - x0), math.max(0, h - p.Y))
+                    c.Visible = x1 > x0
+                elseif f then
+                    f.Visible = false
+                end
+            end
+        end
+    end
+end
+
+-- Catmull-Rom subdivision: turns the sample points into a smooth curve.
+-- Subdivision is adaptive so a 60-sample window never explodes the frame count.
+local function smoothPoints(pts, maxOut)
+    local n = #pts
+    if n < 3 then return pts end
+    local sub = math.clamp(math.floor((maxOut or 150) / n), 1, 6)
+    if sub <= 1 then return pts end
+    local out = {}
+    local function at(i) return pts[math.clamp(i, 1, n)] end
+    for i = 1, n - 1 do
+        local p0, p1, p2, p3 = at(i - 1), at(i), at(i + 1), at(i + 2)
+        for s = 0, sub - 1 do
+            local t = s / sub
+            local t2, t3 = t * t, t * t * t
+            local x = 0.5 * ((2 * p1.X) + (-p0.X + p2.X) * t + (2 * p0.X - 5 * p1.X + 4 * p2.X - p3.X) * t2 + (-p0.X + 3 * p1.X - 3 * p2.X + p3.X) * t3)
+            local y = 0.5 * ((2 * p1.Y) + (-p0.Y + p2.Y) * t + (2 * p0.Y - 5 * p1.Y + 4 * p2.Y - p3.Y) * t2 + (-p0.Y + 3 * p1.Y - 3 * p2.Y + p3.Y) * t3)
+            table.insert(out, Vector2.new(x, y))
+        end
+    end
+    table.insert(out, pts[n])
+    return out
+end
+
+function Container:AddGraph(o)
+    o = o or {}
+    local ctl = newControl("Graph", o)
+    local windowN = o.Window or 60
+    local series = {}
+    for i, s in ipairs(o.Series or {}) do
+        series[i] = { Name = s.Name or ("s" .. i), Color = s.Color or (i == 1 and "Accent" or "Accent2"), Get = s.Get, data = {} }
+    end
+    if #series == 0 then series[1] = { Name = "Value", Color = "Accent", data = {} } end
+    local active = 1
+
+    local card, _, headerRight = dataCard(self, "Graph_" .. ctl.Name, o.Name or "Graph", 11)
+    ctl.Root = card
+    -- series switch
+    if #series > 1 then
+        local strip = Frame({ AutomaticSize = Enum.AutomaticSize.XY, Parent = headerRight, Theme = { BackgroundColor3 = "Panel2" } })
+        Corner(strip, "CornerRadiusSmall"); Stroke(strip, "Stroke2", 1); Pad(strip, 3)
+        List(strip, "x", 3, { VerticalAlignment = Enum.VerticalAlignment.Center })
+        local partsAll = {}
+        for i, s in ipairs(series) do
+            local _, parts = pill(strip, s.Name, i, function() return active == i end, function()
+                active = i
+                for _, p in ipairs(partsAll) do restyleAll(p, 0.12) end
+                ctl:Redraw()
+            end, { Radius = function(t) return math.max(0, t.CornerRadiusSmall - 3) end, PadY = 5, PadX = 12, TextSize = 11, Mono = false, NoBorder = true })
+            table.insert(partsAll, parts)
+        end
+    end
+
+    -- plot
+    local plot = Frame({ Name = "Plot", Size = UDim2.new(1, 0, 0, o.Height or 92), LayoutOrder = 2, ClipsDescendants = true,
+        Parent = card, Theme = { BackgroundColor3 = "Console" } })
+    Corner(plot, 8); Stroke(plot, "Stroke")
+    local lastLabel = Label(plot, { Text = "—", TextSize = 15, Weight = "SemiBold", Position = UDim2.fromOffset(9, 6), ZIndex = 5,
+        Color = function(t) return resolveSpec(series[active].Color, t, nil) end })
+    local peakLabel = Label(plot, { Text = "peak —", TextSize = 9.5, Mono = true, Color = "Dim", ZIndex = 5,
+        AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -9, 0, 7) })
+    local lowLabel = Label(plot, { Text = "low —", TextSize = 9.5, Mono = true, Color = "Dim", ZIndex = 5,
+        AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -9, 1, -6) })
+    local dot = Frame({ Name = "Dot", Size = UDim2.fromOffset(5, 5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 4, Visible = false,
+        BackgroundTransparency = 0, Parent = plot, Theme = { BackgroundColor3 = function(t) return resolveSpec(series[active].Color, t, nil) end } })
+    Corner(dot, "full")
+    local drawMain = linePool(plot, function(t) return resolveSpec(series[active].Color, t, nil) end, 2)
+
+    -- sparklines
+    local sparks = {}
+    if o.Sparklines ~= false and #series > 1 then
+        local row = Frame({ Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 3, Parent = card })
+        List(row, "x", 9)
+        for i, s in ipairs(series) do
+            local cell = Frame({ Size = UDim2.new(1 / #series, -math.ceil(9 * (#series - 1) / #series), 1, 0), LayoutOrder = i,
+                Parent = row, Theme = { BackgroundColor3 = "Panel2" } })
+            Corner(cell, 8); Pad(cell, 8, 10)
+            Label(cell, { Text = s.Name, TextSize = 9, Weight = "SemiBold", Mono = true, Case = "upper", Color = "Dim",
+                AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0) })
+            local mini = Frame({ Name = "Mini", Position = UDim2.fromOffset(40, 0), Size = UDim2.new(1, -86, 1, 0), ClipsDescendants = true, Parent = cell })
+            local value = Label(cell, { Text = "—", TextSize = 12, Weight = "SemiBold", Mono = true, AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, 0, 0.5, 0), Color = function(t) return resolveSpec(s.Color, t, nil) end })
+            sparks[i] = { frame = mini, value = value, draw = linePool(mini, s.Color, 2, false) }
+        end
+    end
+
+    local function scaleFor(data)
+        local lo, hi = math.huge, -math.huge
+        for _, v in ipairs(data) do
+            if v < lo then lo = v end
+            if v > hi then hi = v end
+        end
+        if lo == math.huge then return 0, 1 end
+        if hi - lo < 1e-4 then hi = lo + 1 end
+        local pad = (hi - lo) * 0.12
+        return lo - pad, hi + pad
+    end
+
+    -- Points are kept inside an inset box (half the stroke width plus 1px), because
+    -- a rotated frame is not clipped by its parent's ClipsDescendants.
+    local function points(data, w, h, top, bottom, thickness, smooth, smoothMax)
+        local pts = {}
+        local n = #data
+        if n == 0 then return pts end
+        local lo, hi = scaleFor(data)
+        local inset = (thickness or 2) / 2 + 1
+        local x0, x1 = inset, math.max(inset, w - inset)
+        local yTop, yBot = top + inset, math.max(top + inset, h - bottom - inset)
+        for i, v in ipairs(data) do
+            local x = n == 1 and x1 or x0 + (i - 1) / (n - 1) * (x1 - x0)
+            local y = yTop + (1 - (v - lo) / (hi - lo)) * (yBot - yTop)
+            pts[i] = Vector2.new(x, clamp(y, yTop, yBot))
+        end
+        if smooth ~= false then
+            pts = smoothPoints(pts, smoothMax or 150)
+            for i, p in ipairs(pts) do -- a spline can overshoot; clamp back into the box
+                pts[i] = Vector2.new(clamp(p.X, x0, x1), clamp(p.Y, yTop, yBot))
+            end
+        end
+        return pts, lo, hi
+    end
+
+    local fmt = o.Format or function(v) return fmtNum(math.floor(v * 10 + 0.5) / 10) end
+    function ctl:Redraw()
+        local sc = self.Window and self.Window:_s() or 1
+        local w, h = plot.AbsoluteSize.X / sc, plot.AbsoluteSize.Y / sc
+        if w < 8 or h < 8 then return end
+        local s = series[active]
+        local pts = points(s.data, w, h, 24, 16, 2, o.Smooth)
+        drawMain(pts, h, w)
+        local last = s.data[#s.data]
+        lastLabel.Text = last and fmt(last) or "—"
+        restyle(lastLabel, 0, { "TextColor3" })
+        restyle(dot, 0, { "BackgroundColor3" })
+        if #pts > 0 then
+            dot.Visible = true
+            dot.Position = UDim2.fromOffset(pts[#pts].X, pts[#pts].Y)
+        else
+            dot.Visible = false
+        end
+        local lo, hi = math.huge, -math.huge
+        for _, v in ipairs(s.data) do lo = math.min(lo, v); hi = math.max(hi, v) end
+        peakLabel.Text = hi > -math.huge and ("peak " .. fmt(hi)) or "peak —"
+        lowLabel.Text = lo < math.huge and ("low " .. fmt(lo)) or "low —"
+        for i, sp in ipairs(sparks) do
+            local sw, sh = sp.frame.AbsoluteSize.X / sc, sp.frame.AbsoluteSize.Y / sc
+            if sw > 4 and sh > 4 then
+                sp.draw(points(series[i].data, sw, sh, 3, 3, 2, o.Smooth, 60), sh, sw)
+            end
+            local lv = series[i].data[#series[i].data]
+            sp.value.Text = lv and fmt(lv) or "—"
+        end
+    end
+
+    function ctl:Push(name, value)
+        local target
+        if name == nil or type(name) == "number" then
+            target = series[name or 1]
+        else
+            for _, s in ipairs(series) do if s.Name == name then target = s break end end
+        end
+        if not target then return end
+        table.insert(target.data, tonumber(value) or 0)
+        while #target.data > windowN do table.remove(target.data, 1) end
+        self:Redraw()
+    end
+    function ctl:Clear()
+        for _, s in ipairs(series) do table.clear(s.data) end
+        self:Redraw()
+    end
+    function ctl:SetSeries(name)
+        for i, s in ipairs(series) do if s.Name == name or i == name then active = i break end end
+        self:Redraw()
+    end
+    function ctl:GetSeries() return series[active].Name end
+    ctl.SeriesData = series
+
+    -- sampling timer (not RenderStepped)
+    local interval = o.Interval or 1
+    local anyGetters = false
+    for _, s in ipairs(series) do if s.Get then anyGetters = true end end
+    if anyGetters then
+        local alive = true
+        ctl.Maid:Give(function() alive = false end)
+        task.spawn(function()
+            while alive do
+                if not card.Parent then break end
+                for _, s in ipairs(series) do
+                    if s.Get then
+                        local ok, v = pcall(s.Get)
+                        if ok and tonumber(v) then
+                            table.insert(s.data, tonumber(v))
+                            while #s.data > windowN do table.remove(s.data, 1) end
+                        end
+                    end
+                end
+                ctl:Redraw()
+                task.wait(interval)
+            end
+        end)
+    end
+    plot:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() ctl:Redraw() end)
+    ThemeListeners[ctl] = function() ctl:Redraw() end
+    ctl.Maid:Give(function() ThemeListeners[ctl] = nil end)
+    task.defer(function() if card.Parent then ctl:Redraw() end end)
+
+    ctl.Window, ctl.Container = self.Window, self
+    table.insert(self.Page.Controls, ctl)
+    table.insert(self.Window.Controls, ctl)
+    return ctl
+end
+
+--------------------------------------------------------------------------------
+-- Radar / minimap
+--------------------------------------------------------------------------------
+--[[ AddRadar({ Name = "Radar", Range = 250, Ranges = {125,250,500},
+                Shape = "circle" | "square", Rotate = true, MaxWidth = 340 })
+     :SetPoints({ { Position = Vector2/Vector3 (world-relative), Kind = "danger", Label = "x" } })
+     :SetRange(n), :GetRange(), :SetOrigin(cframeOrVector) for live tracking. ]]
+function Container:AddRadar(o)
+    o = o or {}
+    local ctl = newControl("Radar", o)
+    local square = o.Shape == "square"
+    local ranges = o.Ranges or { 125, 250, 500 }
+    local range = o.Range or ranges[math.min(2, #ranges)]
+
+    local card, _, headerRight = dataCard(self, "Radar_" .. ctl.Name, o.Name or "Radar", 10)
+    ctl.Root = card
+    if o.MaxWidth ~= false then
+        New("UISizeConstraint", { MaxSize = Vector2.new(o.MaxWidth or 340, 1e6), Parent = card })
+    end
+    local pillParts = {}
+    for i, r in ipairs(ranges) do
+        local _, parts = pill(headerRight, tostring(r), i, function() return range == r end, function()
+            ctl:SetRange(r)
+        end, { Flat = true })
+        table.insert(pillParts, parts)
+    end
+
+    -- square canvas sized from its own width: the card is AutomaticSize.Y, so a
+    -- scale height (or an aspect constraint) here would feed back into the card
+    local canvas = Frame({ Name = "Canvas", Size = UDim2.new(1, 0, 0, 240), LayoutOrder = 2, ClipsDescendants = true,
+        Parent = card, Theme = { BackgroundColor3 = "Console" } })
+    canvas:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        local sc = self.Window and self.Window:_s() or 1
+        local w = canvas.AbsoluteSize.X / sc
+        if w > 20 and math.abs(canvas.Size.Y.Offset - w) > 0.5 then canvas.Size = UDim2.new(1, 0, 0, w) end
+    end)
+    Corner(canvas, square and 8 or "full")
+    Stroke(canvas, "Stroke")
+
+    -- rings + crosshair
+    for _, frac in ipairs({ 0.666, 0.333 }) do
+        local ring = Frame({ Size = UDim2.fromScale(frac, frac), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = canvas })
+        Corner(ring, square and 6 or "full")
+        Stroke(ring, function(t) return t.Stroke, fade(t.StrokeTransparency or 0, 0.3) end, 1)
+    end
+    Frame({ Size = UDim2.new(0, 1, 1, 0), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), BackgroundTransparency = 0,
+        Parent = canvas, Theme = { BackgroundColor3 = function(t) return t.Stroke, fade(t.StrokeTransparency or 0, 0.45) end } })
+    Frame({ Size = UDim2.new(1, 0, 0, 1), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundTransparency = 0,
+        Parent = canvas, Theme = { BackgroundColor3 = function(t) return t.Stroke, fade(t.StrokeTransparency or 0, 0.45) end } })
+
+    -- sweep (rotates about the centre: Rotation pivots on the AnchorPoint)
+    local sweep = Frame({ Name = "Sweep", Size = UDim2.new(0.5, 0, 0, 2), AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 0, ZIndex = 2, Parent = canvas,
+        Theme = { BackgroundColor3 = function(t) return t.Accent, 0.5 end } })
+    New("UIGradient", { Transparency = NumberSequence.new(0, 1), Parent = sweep })
+    if o.Rotate ~= false and o.Sweep ~= false then
+        local ok, tw = pcall(TweenService.Create, TweenService, sweep,
+            TweenInfo.new(o.SweepTime or 3.6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), { Rotation = 360 })
+        if ok then tw:Play() end
+    end
+
+    -- local player
+    local me = Frame({ Name = "Player", Size = UDim2.fromOffset(9, 9), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+        ZIndex = 5, BackgroundTransparency = 0, Parent = canvas, Theme = { BackgroundColor3 = "Accent" } })
+    Corner(me, "full")
+    Stroke(me, "AccentSoft", 3)
+    local rangeLabel = Label(canvas, { Text = "range " .. range .. "m", TextSize = 9.5, Mono = true, Color = "Dim", ZIndex = 5,
+        AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -8), XAlign = Enum.TextXAlignment.Center })
+
+    local blips, points = {}, {}
+    local function blip(i)
+        local b = blips[i]
+        if not b then
+            local st = { kind = "dim", far = false }
+            b = { st = st }
+            b.frame = Frame({ Name = "Blip", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 4,
+                BackgroundTransparency = 0, Parent = canvas,
+                Theme = { BackgroundColor3 = function(t)
+                    return t[KIND[kindOf(st.kind)][1]], st.far and 0.45 or 0
+                end } })
+            Corner(b.frame, "full")
+            blips[i] = b
+        end
+        return b
+    end
+
+    local function yaw()
+        if o.Rotate == false then return 0 end
+        local cam = workspace.CurrentCamera
+        if not cam then return 0 end
+        local look = cam.CFrame.LookVector
+        return math.atan2(-look.X, -look.Z)
+    end
+
+    function ctl:Redraw()
+        local sc = self.Window and self.Window:_s() or 1
+        local size = canvas.AbsoluteSize.X / sc
+        if size < 20 then return end
+        local radius = size / 2 - 6
+        local a = yaw()
+        local cosA, sinA = math.cos(a), math.sin(a)
+        for i, p in ipairs(points) do
+            local pos = p.Position or p.position or Vector2.zero
+            local x, z
+            if typeof(pos) == "Vector3" then x, z = pos.X, pos.Z else x, z = pos.X, pos.Y end
+            -- rotate into camera space so "up" is where the player faces
+            local rx = x * cosA - z * sinA
+            local rz = x * sinA + z * cosA
+            local dist = math.sqrt(rx * rx + rz * rz)
+            local b = blip(i)
+            local far = dist > range
+            local scale = far and (range / math.max(dist, 1e-3)) or 1
+            local px, py = rx / range * radius * scale, rz / range * radius * scale
+            if square then
+                local m = math.max(math.abs(px), math.abs(py))
+                if m > radius then px, py = px / m * radius, py / m * radius end
+            end
+            b.st.kind = p.Kind or p.kind or "accent"
+            b.st.far = far
+            b.frame.Size = UDim2.fromOffset(far and 5 or 8, far and 5 or 8)
+            b.frame.Position = UDim2.new(0.5, px, 0.5, py)
+            b.frame.Visible = true
+            restyle(b.frame, 0.1)
+        end
+        for i = #points + 1, #blips do blips[i].frame.Visible = false end
+    end
+
+    function ctl:SetPoints(list)
+        points = list or {}
+        self.Value = points
+        self:Redraw()
+    end
+    function ctl:SetRange(r)
+        range = tonumber(r) or range
+        rangeLabel.Text = "range " .. fmtNum(range) .. "m"
+        for _, p in ipairs(pillParts) do restyleAll(p, 0.12) end
+        self:Redraw()
+        safeCall(o.OnRangeChanged, range)
+    end
+    function ctl:GetRange() return range end
+    function ctl:_total() return #points end
+
+    canvas:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() ctl:Redraw() end)
+    if o.Rotate ~= false then
+        -- cheap follow: redraw on the shared telemetry tick, not per frame
+        subscribeTelemetry(ctl, function()
+            if not card.Parent then Library.Telemetry.subs[ctl] = nil return end
+            if #points > 0 then ctl:Redraw() end
+        end)
+        ctl.Maid:Give(function() Library.Telemetry.subs[ctl] = nil end)
+    end
+    if o.Points then ctl:SetPoints(o.Points) end
+    ctl:SetRange(range)
+
+    ctl.Window, ctl.Container = self.Window, self
+    table.insert(self.Page.Controls, ctl)
+    table.insert(self.Window.Controls, ctl)
+    return ctl
+end
+
+--------------------------------------------------------------------------------
+-- Data table
+--------------------------------------------------------------------------------
+--[[ AddTable({ Name = "Leaderboard",
+        Columns = { { Key = "name", Label = "Player", Width = "2fr" },
+                    { Key = "kd", Label = "K/D", Numeric = true,
+                      Format = function(v) return string.format("%.2f", v) end,
+                      Color = function(v) return v >= 2 and "Ok" or (v < 1 and "Dim" or nil) end } },
+        Rows = { … }, Sort = { Key = "kd", Dir = "desc" }, Height = 224,
+        OnSelect = function(row) end, Zebra = true })
+     Handle: :SetRows(rows), :AddRow(row), :Sort(key, dir), :GetSelected(),
+             :Filter(q), :Refresh() ]]
+function Container:AddTable(o)
+    o = o or {}
+    local ctl = newControl("Table", o)
+    local columns = o.Columns or {}
+    local rowsData = o.Rows or {}
+    local sortKey = o.Sort and o.Sort.Key or nil
+    local sortDir = (o.Sort and o.Sort.Dir) == "asc" and 1 or -1
+    local selectedIndex
+
+    local card, _, headerRight = dataCard(self, "Table_" .. ctl.Name, o.Name or "Table", 9)
+    ctl.Root = card
+    local meta = Label(headerRight, { Text = "", TextSize = 10.5, Mono = true, Color = "Dim" })
+
+    local shell = Frame({ Name = "Shell", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = card })
+    Corner(shell, 8); Stroke(shell, "Stroke")
+    List(shell, "y", 0)
+
+    -- column widths: numbers are px, "2fr"/anything else shares the rest
+    local fixed, flex = 0, 0
+    for _, c in ipairs(columns) do
+        if type(c.Width) == "number" then fixed += c.Width else flex += (tonumber(tostring(c.Width or "1fr"):match("^(%d*%.?%d*)fr$") or "") or 1) end
+    end
+    local function colSize(c)
+        if type(c.Width) == "number" then return UDim2.new(0, c.Width, 1, 0) end
+        local share = tonumber(tostring(c.Width or "1fr"):match("^(%d*%.?%d*)fr$") or "") or 1
+        return UDim2.new(share / flex, -(fixed * share / flex) - 8, 1, 0)
+    end
+
+    -- header
+    local head = Frame({ Name = "Head", Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 1, Parent = shell, Theme = { BackgroundColor3 = "Panel2" } })
+    Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), BackgroundTransparency = 0,
+        Parent = head, Theme = { BackgroundColor3 = "Stroke" } })
+    Pad(head, 0, 4)
+    List(head, "x", 0, { VerticalAlignment = Enum.VerticalAlignment.Center })
+    local headParts = {}
+    for i, c in ipairs(columns) do
+        local isActive = function() return sortKey == c.Key end
+        local btn = Button({ Name = "Col_" .. tostring(c.Key), Size = colSize(c), LayoutOrder = i, Parent = head })
+        Pad(btn, 0, 8)
+        List(btn, "x", 5, { VerticalAlignment = Enum.VerticalAlignment.Center,
+            HorizontalAlignment = (c.Align == "left" or (not c.Numeric and c.Align ~= "right")) and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right })
+        local fg = function(t) return tk(t, isActive() and "Accent" or "Dim") end
+        local lbl = Label(btn, { Text = c.Label or tostring(c.Key), TextSize = 9.5, Weight = "SemiBold", Mono = true, Case = "upper",
+            Color = fg, LayoutOrder = 1, Truncate = true })
+        local arrow = Label(btn, { Text = "", TextSize = 7.5, Mono = true, Color = fg, LayoutOrder = 2 })
+        btn.MouseButton1Click:Connect(function() ctl:Sort(c.Key) end)
+        headParts[i] = { btn = btn, lbl = lbl, arrow = arrow, col = c }
+    end
+
+    local body = New("ScrollingFrame", {
+        Name = "Body", Size = UDim2.new(1, 0, 0, o.Height or 224), LayoutOrder = 2, BackgroundTransparency = 1, BorderSizePixel = 0,
+        CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4,
+        ScrollingDirection = Enum.ScrollingDirection.Y, Parent = shell, Theme = { ScrollBarImageColor3 = "Stroke" },
+    })
+    List(body, "y", 0)
+
+    local rowFrames = {}
+    local view = {}
+
+    local function cellColor(c, value, row)
+        if not c.Color then return nil end
+        local res = c.Color(value, row)
+        if res == nil then return nil end
+        return res
+    end
+
+    local function rebuild()
+        for _, r in ipairs(rowFrames) do r:Destroy() end
+        rowFrames = {}
+        for i, row in ipairs(view) do
+            local st = { sel = selectedIndex == row, zebra = i % 2 == 0 }
+            local rf = Button({ Name = "Row", Size = UDim2.new(1, 0, 0, 32), LayoutOrder = i, Parent = body,
+                Theme = { BackgroundColor3 = function(t)
+                    if st.sel then return tk(t, "AccentSoft") end
+                    if st.zebra and o.Zebra ~= false then return tk(t, "Panel3") end
+                    return t.Panel3, 1
+                end } })
+            -- 2px selection bar on the left
+            Frame({ Name = "Bar", Size = UDim2.new(0, 2, 1, 0), BackgroundTransparency = 0, Parent = rf,
+                Theme = { BackgroundColor3 = function(t)
+                    if not st.sel then return t.AccentLine, 1 end
+                    return tk(t, "AccentLine")
+                end } })
+            local inner = Frame({ Size = UDim2.new(1, -8, 1, 0), Position = UDim2.fromOffset(4, 0), Parent = rf })
+            List(inner, "x", 0, { VerticalAlignment = Enum.VerticalAlignment.Center })
+            for ci, c in ipairs(columns) do
+                local raw = row[c.Key]
+                local text = c.Format and c.Format(raw, row) or (raw == nil and "" or tostring(raw))
+                local colorSpec = cellColor(c, raw, row)
+                local cell = Frame({ Size = colSize(c), LayoutOrder = ci, Parent = inner })
+                Pad(cell, 0, 6)
+                Label(cell, {
+                    Text = text, TextSize = 11.5, Mono = c.Mono ~= false and (c.Numeric or c.Mono) or false,
+                    Weight = (ci == 1 or c.Bold) and "Medium" or "Regular",
+                    Color = colorSpec or (ci == 1 and "Text" or (c.Dim and "Dim" or "Text")),
+                    Size = UDim2.fromScale(1, 1), Truncate = true,
+                    XAlign = (c.Align == "right" or (c.Numeric and c.Align ~= "left")) and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left,
+                })
+            end
+            rf.MouseButton1Click:Connect(function()
+                selectedIndex = row
+                ctl.Value = row
+                rebuild()
+                safeCall(o.OnSelect, row)
+            end)
+            table.insert(rowFrames, rf)
+        end
+        meta.Text = #view .. (#view == 1 and " row" or " rows") .. " · click headers to sort"
+        for _, h in ipairs(headParts) do
+            h.arrow.Text = sortKey == h.col.Key and (sortDir == 1 and "▲" or "▼") or ""
+            restyleAll({ h.lbl, h.arrow }, 0.12)
+        end
+    end
+
+    local query = ""
+    local function apply()
+        view = {}
+        for _, r in ipairs(rowsData) do
+            local ok = query == ""
+            if not ok then
+                for _, c in ipairs(columns) do
+                    local v = r[c.Key]
+                    if v ~= nil and string.find(string.lower(tostring(v)), query, 1, true) then ok = true break end
+                end
+            end
+            if ok then table.insert(view, r) end
+        end
+        if sortKey then
+            table.sort(view, function(a, b)
+                local x, y = a[sortKey], b[sortKey]
+                if type(x) == "number" and type(y) == "number" then
+                    if x == y then return false end
+                    return (x < y) == (sortDir == 1)
+                end
+                x, y = string.lower(tostring(x or "")), string.lower(tostring(y or ""))
+                if x == y then return false end
+                return (x < y) == (sortDir == 1)
+            end)
+        end
+        rebuild()
+    end
+
+    function ctl:Sort(key, dir)
+        if dir then
+            sortDir = dir == "asc" and 1 or -1
+        elseif sortKey == key then
+            sortDir = -sortDir
+        else
+            sortDir = -1 -- first click on a new column: descending
+        end
+        sortKey = key
+        apply()
+        safeCall(o.OnSort, key, sortDir == 1 and "asc" or "desc")
+    end
+    function ctl:SetRows(rows)
+        rowsData = rows or {}
+        selectedIndex = nil
+        apply()
+    end
+    function ctl:AddRow(row)
+        table.insert(rowsData, row)
+        apply()
+    end
+    function ctl:GetRows() return rowsData end
+    function ctl:GetSelected() return ctl.Value end
+    function ctl:Select(row) selectedIndex = row; ctl.Value = row; rebuild() end
+    function ctl:Filter(q)
+        query = string.lower(q or "")
+        apply()
+        return #view
+    end
+    function ctl:_total() return #rowsData end
+    function ctl:Refresh() apply() end
+    apply()
+
+    ctl.Window, ctl.Container = self.Window, self
+    table.insert(self.Page.Controls, ctl)
+    table.insert(self.Window.Controls, ctl)
     return ctl
 end
 
