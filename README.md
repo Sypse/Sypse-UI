@@ -22,7 +22,7 @@ The library parents to `gethui()` when available, then `CoreGui` if the script h
 
 ```lua
 local win = Sypse:CreateWindow({
-    Title = "Sypse UI", Version = "v1.0.0", Subtitle = "attached to · Blade Arena",
+    Title = "Sypse UI", Version = "v1.0.12", Subtitle = "attached to · Blade Arena",
     Theme = "Acrylic", Size = UDim2.fromOffset(980, 620),
     ToggleKey = Enum.KeyCode.RightShift, LiveStats = true,
 })
