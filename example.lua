@@ -27,7 +27,7 @@ local Sypse = require(script.Parent:WaitForChild("SypseUI"))
 --==============================================================================
 local win = Sypse:CreateWindow({
     Title = "Sypse Example",          -- title bar text (the app icon shows its first letter)
-    Version = "v1.0.4",               -- accent badge next to the title
+    Version = "v1.0.6",               -- accent badge next to the title
     Subtitle = "feature tour",        -- dim mono line after the badge
     Theme = "Acrylic",                -- any name in Sypse.Themes, or a theme table
     Size = UDim2.fromOffset(980, 620),

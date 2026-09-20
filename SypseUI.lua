@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.5 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.6 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.5"
+Sypse.Version = "1.0.6"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -3177,7 +3177,21 @@ local function makeButton(container, parent, o, order)
             Size = o.Fill and UDim2.fromScale(1, 1) or UDim2.new(0, 0, 1, 0), AutoSize = (not o.Fill) and Enum.AutomaticSize.X or nil,
             XAlign = Enum.TextXAlignment.Center })
         table.insert(parts, lbl)
-        if not o.Fill then followSize(wrap, btn, function() return container.Window:_s() end) end
+        if not o.Fill then
+            followSize(wrap, btn, function() return container.Window:_s() end)
+            -- A button can never be wider than the row it sits in: uppercase themes with
+            -- letter tracking can double a label's width, and without this the row would
+            -- run past the window edge. Text clips rather than overflowing.
+            local cons = New("UISizeConstraint", { MaxSize = Vector2.new(1e6, 1e6), Parent = btn })
+            btn.ClipsDescendants = true
+            local function clampWidth()
+                local sc = (container.Window and container.Window._s) and container.Window:_s() or 1
+                local avail = parent.AbsoluteSize.X / sc
+                if avail > 24 then cons.MaxSize = Vector2.new(avail, 1e6) end
+            end
+            parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(clampWidth)
+            task.defer(clampWidth)
+        end
     end
     ctl.Root, ctl.Button, ctl.Label = wrap, btn, lbl
     ctl.Locked = o.Disabled or o.Locked
@@ -3220,8 +3234,9 @@ end
 function Container:AddButton(o)
     if type(o) == "string" then o = { Name = o } end
     o = o or {}
-    local row = Frame({ Name = "ButtonRow", Size = UDim2.new(1, 0, 0, o.Height or 34), LayoutOrder = self:_lo(), Parent = self.Frame })
-    List(row, "x", 9, { VerticalAlignment = Enum.VerticalAlignment.Center,
+    local row = Frame({ Name = "ButtonRow", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+        LayoutOrder = self:_lo(), Parent = self.Frame })
+    List(row, "x", 9, { VerticalAlignment = Enum.VerticalAlignment.Center, Wraps = true,
         HorizontalAlignment = o.Align == "Right" and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left })
     local ctl = makeButton(self, row, o, 1)
     ctl.Root = row
@@ -3230,14 +3245,43 @@ end
 
 --[[ AddButtonRow({ {Name=...}, {Name=..., Align="Right"} }) — buttons with
      Align = "Right" are pushed to the right edge. Returns the handles. ]]
+--[[ Buttons wrap onto as many lines as they need and never overflow the row:
+     the left group is sized to whatever the right-aligned group leaves free, both
+     groups wrap internally, and the row grows in height instead of overlapping. ]]
 function Container:AddButtonRow(list, opts)
     opts = opts or {}
     local h = opts.Height or 34
-    local row = Frame({ Name = "ButtonRow", Size = UDim2.new(1, 0, 0, h), LayoutOrder = self:_lo(), Parent = self.Frame })
-    local leftF = Frame({ Size = UDim2.fromScale(1, 1), Parent = row })
-    List(leftF, "x", 9, { VerticalAlignment = Enum.VerticalAlignment.Center })
-    local rightF = Frame({ Size = UDim2.fromScale(1, 1), Parent = row })
-    List(rightF, "x", 9, { VerticalAlignment = Enum.VerticalAlignment.Center, HorizontalAlignment = Enum.HorizontalAlignment.Right })
+    local gap = opts.Gap or 9
+    local row = Frame({ Name = "ButtonRow", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+        LayoutOrder = self:_lo(), Parent = self.Frame })
+    local hasRight = false
+    for _, o in ipairs(list) do if o.Align == "Right" then hasRight = true break end end
+
+    local rightF
+    if hasRight then
+        rightF = Frame({ Name = "Right", AutomaticSize = Enum.AutomaticSize.XY, AnchorPoint = Vector2.new(1, 0),
+            Position = UDim2.fromScale(1, 0), Parent = row })
+        List(rightF, "x", gap, { VerticalAlignment = Enum.VerticalAlignment.Center,
+            HorizontalAlignment = Enum.HorizontalAlignment.Right, Wraps = true })
+        -- the right group itself may not eat the whole row
+        local rcons = New("UISizeConstraint", { MaxSize = Vector2.new(1e6, 1e6), Parent = rightF })
+        row:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+            local sc = self.Window:_s()
+            local w = row.AbsoluteSize.X / sc
+            if w > 40 then rcons.MaxSize = Vector2.new(math.max(80, w * 0.6), 1e6) end
+        end)
+    end
+    local leftF = Frame({ Name = "Left", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = row })
+    List(leftF, "x", gap, { VerticalAlignment = Enum.VerticalAlignment.Center, Wraps = true })
+    if rightF then
+        local function syncLeft()
+            local sc = self.Window:_s()
+            leftF.Size = UDim2.new(1, -(rightF.AbsoluteSize.X / sc + gap), 0, 0)
+        end
+        rightF:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncLeft)
+        task.defer(syncLeft)
+    end
+
     local handles = {}
     for i, o in ipairs(list) do
         o.Height = o.Height or h
@@ -3671,8 +3715,8 @@ function Container:AddPlayerGrid(o)
     local cols = o.Columns or 4
     local root = VStack(self.Frame, 14, { Name = "PlayerGrid", LayoutOrder = self:_lo() })
     ctl.Root = root
-    local top = Frame({ Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 1, Parent = root })
-    List(top, "x", 10, { VerticalAlignment = Enum.VerticalAlignment.Center })
+    local top = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = root })
+    List(top, "x", 10, { VerticalAlignment = Enum.VerticalAlignment.Center, Wraps = true })
     local search
     if o.Search ~= false then
         search = buildSearchBar(self, top, { Placeholder = o.Placeholder or "Search players in server…", Target = ctl, Size = UDim2.new(0, 200, 0, 36) }, 1)
@@ -3846,9 +3890,11 @@ function Container:AddConfigManager(o)
     local root = VStack(self.Frame, 7, { Name = "ConfigManager", LayoutOrder = self:_lo() })
     ctl.Root = root
     local listF = VStack(root, 7, { LayoutOrder = 1 })
-    local fieldRow = Frame({ Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 2, Parent = root })
-    List(fieldRow, "x", 7, { VerticalAlignment = Enum.VerticalAlignment.Center })
-    local fbox = Frame({ Size = UDim2.new(0, 120, 1, 0), LayoutOrder = 1, Parent = fieldRow, Theme = { BackgroundColor3 = "Panel2" } })
+    local fieldRow = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = root })
+    List(fieldRow, "x", 7, { VerticalAlignment = Enum.VerticalAlignment.Center, Wraps = true })
+    -- explicit height: the row is AutomaticSize.Y, so a scale height here would
+    -- feed back into the row's own height and blow the field up
+    local fbox = Frame({ Size = UDim2.new(0, 120, 0, 36), LayoutOrder = 1, Parent = fieldRow, Theme = { BackgroundColor3 = "Panel2" } })
     Corner(fbox, "CornerRadiusSmall"); Stroke(fbox, "Stroke")
     FlexFill(fbox)
     local nameBox = New("TextBox", { BackgroundTransparency = 1, ClearTextOnFocus = false, Text = win.Profile, TextSize = 12,
@@ -3959,9 +4005,13 @@ function Sypse:Notify(o)
     local card = Frame({ Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(28, 0), Parent = slot,
         Theme = { BackgroundColor3 = "Tooltip" } })
     Corner(card, "CornerRadiusSmall"); Stroke(card, "Stroke")
-    local bar = Frame({ Name = "Accent", Size = UDim2.new(0, 3, 1, 0), BackgroundTransparency = 0, Parent = card,
+    -- height is synced from the card rather than scaled: the card is AutomaticSize.Y
+    local bar = Frame({ Name = "Accent", Size = UDim2.fromOffset(3, 40), BackgroundTransparency = 0, Parent = card,
         Theme = { BackgroundColor3 = function(t) return t[KIND[kind][1]], 0 end } })
     Corner(bar, 2)
+    card:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        bar.Size = UDim2.fromOffset(3, card.AbsoluteSize.Y)
+    end)
     local content = Frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = card })
     Pad(content, 12, 13, 12, 16)
     local dot = Frame({ Size = UDim2.fromOffset(8, 8), Position = UDim2.fromOffset(0, 4), Parent = content,

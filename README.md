@@ -13,8 +13,7 @@ local Sypse = require(script.Parent:WaitForChild("SypseUI"))
 **Loader environments.** Host `SypseUI.lua` somewhere raw and load it with `loadstring`:
 
 ```lua
-local Sypse = loadstring(game:HttpGet("https://raw.githubusercontent.com/Sypse/Sypse-UI/refs/heads/main/SypseUI.lua"))()
-
+local Sypse = loadstring(game:HttpGet("https://example.com/SypseUI.lua"))()
 ```
 
 The library parents to `gethui()` when available, then `CoreGui` if the script has permission, and otherwise `PlayerGui`. Executor globals (`writefile`, `readfile`, `listfiles`, `delfile`, `setclipboard`, `gethui`, `syn.protect_gui`, `cloneref`) are all feature-detected. Without file I/O, configs are kept in memory for the session; without a clipboard, Export prints the JSON to the output.
@@ -23,7 +22,7 @@ The library parents to `gethui()` when available, then `CoreGui` if the script h
 
 ```lua
 local win = Sypse:CreateWindow({
-    Title = "Sypse UI", Version = "v1.0.5", Subtitle = "attached to · Blade Arena",
+    Title = "Sypse UI", Version = "v1.0.6", Subtitle = "attached to · Blade Arena",
     Theme = "Acrylic", Size = UDim2.fromOffset(980, 620),
     ToggleKey = Enum.KeyCode.RightShift, LiveStats = true,
 })
@@ -92,7 +91,7 @@ Every container (page, section, column, accordion) supports:
 | `AddKeybind({ Name, Default, Mode = "Press" | "Toggle" | "Hold", Hint, MenuKey, HUD, HudName, Callback, ChangedCallback, Flag })` | Click, press any key or mouse button. Escape cancels, Backspace clears. `MenuKey = true` rebinds the window toggle. |
 | `AddColorPicker({ Name, Default, Alpha, Expanded, Flag, Callback(color, transparency) })` | SV square, hue strip, alpha strip, HEX and A fields. `Alpha` is opacity 0–1. |
 | `AddButton({ Name, Variant, Callback, DoubleClick, Disabled, Icon, Fill, Tooltip, Align })` | Variants: `Primary`, `Secondary`, `Ghost`, `Danger`, `Ok`, `Warn`, `Icon`. |
-| `AddButtonRow({ {…}, {…, Align = "Right"} })` | Several buttons on one row; right-aligned group supported. |
+| `AddButtonRow({ {…}, {…, Align = "Right"} }, { Height, Gap })` | Several buttons on one row; right-aligned group supported. Rows wrap onto more lines when they run out of width, and no button can grow wider than the row (long labels clip), so buttons never overlap or spill past the window — which matters in uppercase themes where tracking widens labels. |
 | `AddLabel(text)` / `AddParagraph({ Title, Body })` / `AddDivider()` / `AddSpacer(px)` | Text blocks. |
 | `AddBadges({ { Text, Kind }, … })` | Mono chips: `accent`, `ok`, `warn`, `danger`, `dim`. |
 | `AddProgress({ Name, Default, Spinner, Color })` | `:Set(0–100)`. |
