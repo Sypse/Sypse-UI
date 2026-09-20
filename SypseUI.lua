@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.8 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.9 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.8"
+Sypse.Version = "1.0.9"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -4595,15 +4595,26 @@ function Container:AddRadar(o)
     Frame({ Size = UDim2.new(1, 0, 0, 1), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundTransparency = 0,
         Parent = canvas, Theme = { BackgroundColor3 = function(t) return t.Stroke, fade(t.StrokeTransparency or 0, 0.45) end } })
 
-    -- sweep (rotates about the centre: Rotation pivots on the AnchorPoint)
-    local sweep = Frame({ Name = "Sweep", Size = UDim2.new(0.5, 0, 0, 2), AnchorPoint = Vector2.new(0, 0.5),
+    --[[ Sweep. A GuiObject rotates about its own centre, not its AnchorPoint, so a
+         half-width bar anchored at the middle of the canvas swings around a pivot
+         offset from the centre and traces a chord instead of a radius. The bar
+         therefore spans the full diameter and is centred, and the gradient hides
+         the half behind the centre so what you see is a ray from the middle out.
+         This is correct whichever pivot the engine uses. ]]
+    local sweep = Frame({ Name = "Sweep", Size = UDim2.new(1, 0, 0, 2), AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 0, ZIndex = 2, Parent = canvas,
-        Theme = { BackgroundColor3 = function(t) return t.Accent, 0.5 end } })
-    New("UIGradient", { Transparency = NumberSequence.new(0, 1), Parent = sweep })
-    if o.Rotate ~= false and o.Sweep ~= false then
+        Theme = { BackgroundColor3 = function(t) return t.Accent, 0.45 end } })
+    New("UIGradient", { Parent = sweep, Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),      -- behind the centre: invisible
+        NumberSequenceKeypoint.new(0.499, 1),
+        NumberSequenceKeypoint.new(0.5, 0.15), -- brightest at the centre
+        NumberSequenceKeypoint.new(1, 1),      -- fading out at the rim
+    }) })
+    ctl.Sweeping = o.Sweep ~= false -- `Rotate` is about blip orientation, not the sweep
+    if ctl.Sweeping then
         local ok, tw = pcall(TweenService.Create, TweenService, sweep,
             TweenInfo.new(o.SweepTime or 3.6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), { Rotation = 360 })
-        if ok then tw:Play() end
+        if ok then tw:Play(); ctl._sweepTween = tw end
     end
 
     -- local player
@@ -4653,15 +4664,14 @@ function Container:AddRadar(o)
             -- rotate into camera space so "up" is where the player faces
             local rx = x * cosA - z * sinA
             local rz = x * sinA + z * cosA
-            local dist = math.sqrt(rx * rx + rz * rz)
+            -- circle: radial distance and a radial clamp.
+            -- square: Chebyshev (max-norm) distance and a rect clamp, so a diagonal
+            -- outlier lands in the corner rather than short of it.
+            local dist = square and math.max(math.abs(rx), math.abs(rz)) or math.sqrt(rx * rx + rz * rz)
             local b = blip(i)
             local far = dist > range
-            local scale = far and (range / math.max(dist, 1e-3)) or 1
-            local px, py = rx / range * radius * scale, rz / range * radius * scale
-            if square then
-                local m = math.max(math.abs(px), math.abs(py))
-                if m > radius then px, py = px / m * radius, py / m * radius end
-            end
+            local k = far and (range / math.max(dist, 1e-3)) or 1
+            local px, py = rx / range * radius * k, rz / range * radius * k
             b.st.kind = p.Kind or p.kind or "accent"
             b.st.far = far
             b.frame.Size = UDim2.fromOffset(far and 5 or 8, far and 5 or 8)
