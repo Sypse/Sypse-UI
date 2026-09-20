@@ -1,0 +1,163 @@
+# Sypse UI
+
+A themeable Roblox UI library in a single Luau `ModuleScript`. Pure `Instance` UI (no Roact / Fusion), six complete themes that re-skin live, and a full component set: tabs, segments, accordions, toggles, sliders, range sliders, dropdowns, inputs, keybinds, colour pickers, toasts, dialogs, console, player grid, config manager and a floating watermark/keybind HUD.
+
+## Installation
+
+**Studio.** Create a `ModuleScript` named `SypseUI`, paste `SypseUI.lua` into it, and put it next to a `LocalScript` (for example in `StarterPlayerScripts`). Paste `demo.lua` into the LocalScript and press Play.
+
+```lua
+local Sypse = require(script.Parent:WaitForChild("SypseUI"))
+```
+
+**Loader environments.** Host `SypseUI.lua` somewhere raw and load it with `loadstring`:
+
+```lua
+local Sypse = loadstring(game:HttpGet("https://example.com/SypseUI.lua"))()
+```
+
+The library parents to `gethui()` when available, then `CoreGui` if the script has permission, and otherwise `PlayerGui`. Executor globals (`writefile`, `readfile`, `listfiles`, `delfile`, `setclipboard`, `gethui`, `syn.protect_gui`, `cloneref`) are all feature-detected. Without file I/O, configs are kept in memory for the session; without a clipboard, Export prints the JSON to the output.
+
+## Quick start
+
+```lua
+local win = Sypse:CreateWindow({
+    Title = "Sypse UI", Version = "v1.0.0", Subtitle = "attached to · Blade Arena",
+    Theme = "Acrylic", Size = UDim2.fromOffset(980, 620),
+    ToggleKey = Enum.KeyCode.RightShift, LiveStats = true,
+})
+
+local combat  = win:AddTab({ Name = "Combat", Icon = "circle", Count = 12 })
+local general = combat:AddSegment("General")
+local aim     = general:AddSection("Aim assist", { Badge = { Text = "RISKY", Kind = "danger" } })
+
+aim:AddToggle({ Name = "Enabled", Description = "Runs on RenderStepped", Tooltip = "Hover text", Default = true, Flag = "enabled",
+    Callback = function(on) print(on) end })
+aim:AddSlider({ Name = "Smoothness", Min = 0, Max = 100, Default = 42, Flag = "smooth" })
+
+Sypse:SetTheme("Terminal")          -- everything restyles immediately
+print(Sypse.Flags.smooth)            --> 42
+win:SaveConfig("legit.json")
+```
+
+## API
+
+### Library
+
+| Call | Description |
+|---|---|
+| `Sypse:CreateWindow(opts)` | Creates a window. See window options below. |
+| `Sypse:SetTheme(nameOrTable [, instant])` | Switches theme; every live element restyles (tweened ~0.15 s). Accepts a name, a `Sypse.Themes` entry, or a partial table. |
+| `Sypse:RegisterTheme(name, tokens)` | Adds a theme. Partial tables merge over `tokens.Base` (default `"Acrylic"`). |
+| `Sypse:GetTheme()` / `Sypse:GetThemeNames()` | Current theme table / ordered names for pickers. |
+| `Sypse.Themes` | Public table of themes keyed by name. |
+| `Sypse.Flags` / `Sypse.Options` | Flag → value, and flag → control handle. |
+| `Sypse:Notify({ Title, Body, Kind, Duration })` | Toast. `Kind`: `info`/`accent`, `ok`, `warn`, `danger`. Max 4 stacked, 4.2 s default. |
+| `Sypse:Dialog({ Title, Body, Icon, Confirm, Cancel, DismissOnScrim })` | Blocking modal. `Confirm = { Text, Variant, Callback }`, `Cancel = { Text, Callback }`. Escape cancels. |
+| `Sypse:Log(level, message)` | Appends to every console. Levels `INFO`, `OK`, `WARN`, `ERR`. |
+| `Sypse:HookLogService([enable])` | Mirrors `print`/`warn`/errors into the console. |
+| `Sypse:Every(seconds, fn)` | Managed repeating timer, returns `stop()`. Stopped by `Destroy`. |
+| `Sypse:SaveConfig / LoadConfig / ListConfigs / DeleteConfig (name, folder)` | Flag persistence as JSON. |
+| `Sypse:ExportConfig()` / `Sypse:ApplyConfig(jsonOrTable)` | Serialise / apply without touching disk. |
+| `Sypse:Toggle()` / `Sypse:Destroy()` | Toggle the active window / tear down everything (instances, connections, timers). |
+| `Sypse.Tracking = false` | Disables hair-space letter tracking (see Notes). |
+
+### Window options
+
+`Title`, `Version` (badge), `Subtitle` (dim mono line; a `Subtitle` that looks like `v1.0` becomes the badge), `Icon` (app-square letter), `Theme`, `Size`, `ToggleKey`, `LiveStats` (FPS / ping / memory / position cards on every page), `ConfirmClose`, `OnClose`, `AutosaveFlag` (save on close when that flag is true), `ConfigFolder` (`"SypseUI"`), `Profile` (`"default.json"`), `User = { Name, Sub, Initials }`, `Status`, `Watermark` (default on), `DisableBlur`, `BlurSize`, `Scale`, `Parent`, `DisplayOrder`.
+
+### Window methods
+
+`AddTab(opts)`, `SelectTab(tabOrName)`, `SetVisible(bool)`, `Toggle()`, `Minimize()`, `Maximize()`, `Close()`, `Destroy()`, `SetTitle(text)`, `SetStatus(text, kind)`, `SetToggleKey(key)`, `SetWatermark(bool)`, `Notify(opts)`, `Dialog(opts)`, `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)`.
+
+### Tabs and containers
+
+`win:AddTab({ Name, Icon, Count })` returns a tab. `Icon` is `"circle"`, `"square"`, `"diamond"`, an `rbxassetid://` image, or a text glyph. `tab:AddSegment(name)` adds a segmented sub-tab and returns a container. You can also call any `Add*` directly on a tab; it goes to an implicit page. `tab:SetCount(n)`, `tab:SelectSegment(nameOrPage)`.
+
+Every container (page, section, column, accordion) supports:
+
+| Method | Notes |
+|---|---|
+| `AddSection(name, { Badge, Gap })` | Uppercase tracked header + hairline. Returns a container for the section's rows. |
+| `AddColumns(2)` / `AddColumns({ "1fr", 250 })` | Numbers are fixed px, anything else is a flexible share. Returns an array of containers. |
+| `AddAccordion({ Name, Badge, Open, Count })` | Collapsible, tweened height, "N settings" count. Children render compact. |
+| `AddToggle({ Name, Description, Tooltip, Badge, Default, Flag, Callback, Locked, Checkbox, Risky })` | 44×24 switch. `Checkbox = true` or `AddCheckbox` for the 20 px variant. |
+| `AddSlider({ Name, Min, Max, Step, Default, Suffix, Chip, Color, Format, Flag, Callback })` | Drag and click-to-jump. `Color = "Accent2"` for the alternate fill. |
+| `AddRangeSlider({ Name, Min, Max, Step, Default = {lo, hi}, MinGap = 5, Suffix, Note, Flag, Callback(lo, hi) })` | Two thumbs, Accent2 fill. |
+| `AddDropdown({ Name, Options, Default, Searchable, Placeholder, Flag, Callback })` | Popup closes on outside click. `:Refresh(values, keep)`. |
+| `AddDropdown({ …, Multi = true })` | Removable chips with `+` / `×`; `Searchable` adds a filter field. `Get()` returns a list. |
+| `AddInput({ Name, Default, Placeholder, Numeric, Min, Max, Password, MultiLine, Width, Finished, Callback, OnFocusLost })` | Numeric rejects non-numbers and right-aligns. Password is masked. |
+| `AddKeybind({ Name, Default, Mode = "Press" | "Toggle" | "Hold", Hint, MenuKey, HUD, HudName, Callback, ChangedCallback, Flag })` | Click, press any key or mouse button. Escape cancels, Backspace clears. `MenuKey = true` rebinds the window toggle. |
+| `AddColorPicker({ Name, Default, Alpha, Expanded, Flag, Callback(color, transparency) })` | SV square, hue strip, alpha strip, HEX and A fields. `Alpha` is opacity 0–1. |
+| `AddButton({ Name, Variant, Callback, DoubleClick, Disabled, Icon, Fill, Tooltip, Align })` | Variants: `Primary`, `Secondary`, `Ghost`, `Danger`, `Ok`, `Warn`, `Icon`. |
+| `AddButtonRow({ {…}, {…, Align = "Right"} })` | Several buttons on one row; right-aligned group supported. |
+| `AddLabel(text)` / `AddParagraph({ Title, Body })` / `AddDivider()` / `AddSpacer(px)` | Text blocks. |
+| `AddBadges({ { Text, Kind }, … })` | Mono chips: `accent`, `ok`, `warn`, `danger`, `dim`. |
+| `AddProgress({ Name, Default, Spinner, Color })` | `:Set(0–100)`. |
+| `AddSpinner(style)` / `AddSpinners()` | `ring`, `thin`, `dots`. |
+| `AddStatCards({ { Label, Value, Note, Kind }, … })` / `AddLiveStats()` | 4-up cards; live version wired to real FPS, ping, memory, position. |
+| `AddConsole({ Height, HookLogService, MaxLines })` | Timestamped levels, filter pills, Clear, blinking caret. |
+| `AddSearchBar({ Placeholder, Target, Total, Callback })` | Debounced; `Target` is any handle with `:Filter(q)` (console, player grid, page). |
+| `AddPlayerGrid({ Items = "live" or list, Actions, Search, Columns, Default, OnSelect })` | Avatar thumbnails with striped placeholders, status dot, tag. Actions receive the selected item. |
+| `AddConfigManager({ Folder })` | Profile list with ACTIVE / SAVED / RISKY tags, filename field, Save / Load / Export / Delete. |
+
+Every control handle has `:Set(value)`, `:Get()`, `:SetVisible(bool)`, `:SetLocked(bool)`, `:OnChanged(fn)` and `:Destroy()`. Controls with a `Flag` write to `Sypse.Flags[flag]` and are saved by the config system. A colour picker also writes `Flags[flag .. "Transparency"]`. Controls marked `Risky = true` make a saved profile show the RISKY tag when they are on.
+
+The title-bar filter box (focus it with `/`) filters the current page's controls by name.
+
+## Themes
+
+Six built-ins: **Acrylic** (dark glass), **Daylight** (light dashboard), **Terminal** (monospace, uppercase), **Voltage** (neon, glow), **Marshmallow** (soft pastel, round), **Blocky** (chunky 2.5 px borders, hard offset shadow). A theme change swaps colours, fonts, corner radius, stroke thickness, shadow style and text casing.
+
+### Token reference
+
+Any `Color3` token can be paired with `<Token>Transparency` (0 = opaque, 1 = invisible). Missing transparency tokens mean opaque.
+
+| Token | Purpose |
+|---|---|
+| `Background` (+ `BackgroundGradient`) | Window base layer under `Panel`; gives Acrylic its tinted glass. |
+| `Stage` | Reserved (the mockup's page backdrop); kept for round-tripping. |
+| `Panel` | Window body. |
+| `Panel2` | Raised controls: fields, secondary buttons, title bar. |
+| `Panel3` | Recessed rows, cards, sidebar, status bar. |
+| `Stroke`, `Stroke2` | Primary borders / subtle dividers. |
+| `Track`, `Knob` | Slider track and switch off-state / thumbs and knobs. |
+| `Text`, `Dim` | Primary / muted text. |
+| `Tooltip` | Tooltip, dropdown popup and toast background. |
+| `Console`, `ConsoleText` | Log viewer background and text. |
+| `Accent`, `AccentFg`, `AccentSoft`, `AccentLine` | Primary action colour, text on it, 10–15 % tint, ~30 % border. |
+| `Accent2` | Secondary accent (range sliders, thin spinner). |
+| `Ok` / `OkSoft` / `OkLine`, `Warn` / …, `Danger` / … | Semantic colours with the same soft/line convention. |
+| `Placeholder`, `Placeholder2` | Stripes on loading thumbnails. |
+| `Scrim` | Modal backdrop. |
+| `Font`, `FontMono` | Family name (`"Nunito"`), asset path, `rbxassetid://` family, `Font` object, or `Enum.Font`. |
+| `CornerRadius`, `CornerRadiusSmall` | Radius in px for window/modals and rows/buttons/fields. |
+| `StrokeThickness` | `UIStroke.Thickness` for primary borders. |
+| `Shadow` | `"soft"`, `"none"`, `"glow"`, `"hard"`. With `ShadowColor`, `ShadowTransparency`, `ShadowOffset` (Vector2, hard only). |
+| `ButtonShadow` | `"none"`, `"hard"`, `"glow"` under primary buttons. |
+| `Blur` | `true` applies a camera `BlurEffect` while the window is open. |
+| `TextCase` | `"none"` or `"upper"` for buttons, tab labels, section headers and titles. |
+| `LetterSpacing` | Tracking for uppercase themes, in hair-space units. |
+
+### Adding a custom theme
+
+```lua
+Sypse:RegisterTheme("Cyan Terminal", {
+    Base = "Terminal",                       -- optional, defaults to Acrylic
+    Accent = Color3.fromHex("22E7FF"),
+    AccentFg = Color3.fromHex("001318"),
+    AccentSoft = Color3.fromHex("22E7FF"), AccentSoftTransparency = 0.86,
+    CornerRadius = 4, CornerRadiusSmall = 3,
+})
+Sypse:SetTheme("Cyan Terminal")
+```
+
+Only the tokens you list change. If you override a colour without its `…Transparency`, that transparency resets to opaque, so an overridden `Panel` doesn't silently inherit Acrylic's 0.945 glass value. Registered themes appear in `Sypse:GetThemeNames()`, so a theme-picker dropdown picks them up automatically.
+
+To edit a built-in theme, change its table in §4 of `SypseUI.lua`; the section is commented token by token.
+
+## Notes and substitutions
+
+**Roblox limits.** Roblox can't blur UI behind UI, so Acrylic's glass is a translucent panel over a tinted base plus a camera `BlurEffect` on the 3D world. Soft and glow shadows are stacked translucent rounded frames. Hard shadows are a solid offset frame. There is no letter-spacing property, so tracking inserts U+200A hair spaces; set `Sypse.Tracking = false` if a font renders them badly. The window body is a `CanvasGroup` so children clip to rounded corners (it falls back to a clipped `Frame` if unavailable).
+
+**Engineering.** Every themed property goes through one token registry, which is what lets `SetTheme` restyle live UI, including state-dependent styling such as a switch that is on. All `UserInputService` connections are tracked and disconnected on `Destroy`; drag handlers connect on press and disconnect on release. There is one shared `RenderStepped` counter for FPS, ping, memory and position. Spinners and blinking carets use infinite tweens rather than per-frame loops.
