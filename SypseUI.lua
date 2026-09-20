@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.1 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.2 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.1"
+Sypse.Version = "1.0.2"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -1298,13 +1298,23 @@ function Sypse:CreateWindow(o)
     Corner(chrome, "CornerRadius")
     Stroke(chrome, "Stroke")
 
+    -- The CanvasGroup itself stays transparent: a UIGradient on a CanvasGroup
+    -- multiplies the colour of EVERYTHING inside it (text, panels, strokes), so
+    -- the theme's background gradient lives on its own Backdrop frame instead.
     local canvas, isCanvas = TryCanvasGroup({
-        Name = "Canvas", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 0, ClipsDescendants = true,
-        Parent = chrome, Theme = { BackgroundColor3 = "Background" },
+        Name = "Canvas", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ClipsDescendants = true,
+        Parent = chrome,
     })
     self.Canvas, self.IsCanvasGroup = canvas, isCanvas
     Corner(canvas, "CornerRadius")
-    local grad = New("UIGradient", { Rotation = 35, Parent = canvas,
+    local backdrop = Frame({ Name = "Backdrop", Size = UDim2.fromScale(1, 1), Parent = canvas,
+        Theme = { BackgroundColor3 = function(t)
+            -- with a gradient the frame is white so the gradient colours show unmodified
+            if t.BackgroundGradient then return Color3.new(1, 1, 1), t.BackgroundTransparency or 0 end
+            return tk(t, "Background")
+        end } })
+    Corner(backdrop, "CornerRadius")
+    New("UIGradient", { Rotation = 35, Parent = backdrop,
         Theme = {
             Enabled = function(t) return t.BackgroundGradient ~= nil end,
             Color = function(t)
