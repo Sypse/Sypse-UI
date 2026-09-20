@@ -20,7 +20,7 @@
 ]]
 
 local Players = game:GetService("Players")
-local Sypse = require(script.Parent:WaitForChild("SypseUI"))
+local Sypse = loadstring(game:HttpGet("https://raw.githubusercontent.com/Sypse/Sypse-UI/refs/heads/main/SypseUI.lua"))()
 
 --==============================================================================
 -- WINDOW
