@@ -20,14 +20,14 @@
 ]]
 
 local Players = game:GetService("Players")
-local Sypse = loadstring(game:HttpGet("https://raw.githubusercontent.com/Sypse/Sypse-UI/refs/heads/main/SypseUI.lua"))()
+local Sypse = require(script.Parent:WaitForChild("SypseUI"))
 
 --==============================================================================
 -- WINDOW
 --==============================================================================
 local win = Sypse:CreateWindow({
     Title = "Sypse Example",          -- title bar text (the app icon shows its first letter)
-    Version = "v1.0.3",               -- accent badge next to the title
+    Version = "v1.0.4",               -- accent badge next to the title
     Subtitle = "feature tour",        -- dim mono line after the badge
     Theme = "Acrylic",                -- any name in Sypse.Themes, or a theme table
     Size = UDim2.fromOffset(980, 620),
@@ -40,6 +40,8 @@ local win = Sypse:CreateWindow({
     User = { Name = "you", Sub = "example user" }, -- sidebar footer card
     Status = "ready · example",       -- status bar text
     Watermark = true,                 -- floating FPS / ping pill + keybind HUD (click it to toggle the window)
+    Blur = false,                     -- background blur: false (default) | true (all themes) | "theme"
+    BlurSize = 10,                    -- BlurEffect size when blur is on
     OnClose = function() print("[example] window closed") end,
 })
 
@@ -411,6 +413,21 @@ wsec:AddButtonRow({
     { Name = "Status: warn", Variant = "Warn", Callback = function() win:SetStatus("degraded — retrying", "warn") end },
     { Name = "Status: danger", Variant = "Danger", Callback = function() win:SetStatus("disconnected", "danger") end },
     { Name = "Toggle watermark", Callback = function() wm = not wm; win:SetWatermark(wm) end },
+})
+-- Background blur is a window setting, independent of the theme.
+local blurOn = false
+wsec:AddButtonRow({
+    { Name = "Blur on", Callback = function() blurOn = true; win:SetBlur(true); toast("Blur", "on for every theme", "accent") end },
+    { Name = "Blur off", Callback = function() blurOn = false; win:SetBlur(false); toast("Blur", "off", "accent") end },
+    { Name = "Blur follows theme", Callback = function()
+        win:SetBlur("theme")            -- only themes with Blur = true (Acrylic) blur
+        toast("Blur", "follows the theme token", "accent")
+    end },
+    { Name = "Blur strength 24", Callback = function() win:SetBlur(blurOn and true or "theme", 24); toast("Blur", "size 24", "accent") end },
+    { Name = "Blur all windows", Callback = function()
+        Sypse:SetBlur(not select(1, Sypse:GetBlur()))  -- library-wide: every window + the default for new ones
+        toast("Sypse:SetBlur", tostring(select(1, Sypse:GetBlur())), "accent")
+    end },
 })
 wsec:AddButtonRow({
     { Name = "Toggle key → Insert", Callback = function() win:SetToggleKey(Enum.KeyCode.Insert); toast("Toggle key", "now Insert", "accent") end },

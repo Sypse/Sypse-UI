@@ -22,7 +22,7 @@ The library parents to `gethui()` when available, then `CoreGui` if the script h
 
 ```lua
 local win = Sypse:CreateWindow({
-    Title = "Sypse UI", Version = "v1.0.0", Subtitle = "attached to · Blade Arena",
+    Title = "Sypse UI", Version = "v1.0.4", Subtitle = "attached to · Blade Arena",
     Theme = "Acrylic", Size = UDim2.fromOffset(980, 620),
     ToggleKey = Enum.KeyCode.RightShift, LiveStats = true,
 })
@@ -59,16 +59,17 @@ win:SaveConfig("legit.json")
 | `Sypse:Every(seconds, fn)` | Managed repeating timer, returns `stop()`. Stopped by `Destroy`. |
 | `Sypse:SaveConfig / LoadConfig / ListConfigs / DeleteConfig (name, folder)` | Flag persistence as JSON. |
 | `Sypse:ExportConfig()` / `Sypse:ApplyConfig(jsonOrTable)` | Serialise / apply without touching disk. |
+| `Sypse:SetBlur(mode [, size])` | Background blur for every open window and the default for new ones. `false` (default), `true` (all themes), `"theme"` (follow each theme's `Blur` token). `Sypse:GetBlur()` reads it back. |
 | `Sypse:Toggle()` / `Sypse:Destroy()` | Toggle the active window / tear down everything (instances, connections, timers). |
 | `Sypse.Tracking = false` | Disables hair-space letter tracking (see Notes). |
 
 ### Window options
 
-`Title`, `Version` (badge), `Subtitle` (dim mono line; a `Subtitle` that looks like `v1.0` becomes the badge), `Icon` (app-square letter), `Theme`, `Size`, `ToggleKey`, `LiveStats` (FPS / ping / memory / position cards on every page), `ConfirmClose`, `OnClose`, `AutosaveFlag` (save on close when that flag is true), `ConfigFolder` (`"SypseUI"`), `Profile` (`"default.json"`), `User = { Name, Sub, Initials }`, `Status`, `Watermark` (default on), `DisableBlur`, `BlurSize`, `Scale`, `Parent`, `DisplayOrder`.
+`Title`, `Version` (badge), `Subtitle` (dim mono line; a `Subtitle` that looks like `v1.0` becomes the badge), `Icon` (app-square letter), `Theme`, `Size`, `ToggleKey`, `LiveStats` (FPS / ping / memory / position cards on every page), `ConfirmClose`, `OnClose`, `AutosaveFlag` (save on close when that flag is true), `ConfigFolder` (`"SypseUI"`), `Profile` (`"default.json"`), `User = { Name, Sub, Initials }`, `Status`, `Watermark` (default on), `Blur` (`false` default / `true` / `"theme"`), `BlurSize` (10), `Scale`, `Parent`, `DisplayOrder`.
 
 ### Window methods
 
-`AddTab(opts)`, `SelectTab(tabOrName)`, `SetVisible(bool)`, `Toggle()`, `Minimize()`, `Maximize()`, `Close()`, `Destroy()`, `SetTitle(text)`, `SetStatus(text, kind)`, `SetToggleKey(key)`, `SetWatermark(bool)`, `Notify(opts)`, `Dialog(opts)`, `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)`.
+`AddTab(opts)`, `SelectTab(tabOrName)`, `SetVisible(bool)`, `Toggle()`, `Minimize()`, `Maximize()`, `Close()`, `Destroy()`, `SetTitle(text)`, `SetStatus(text, kind)`, `SetToggleKey(key)`, `SetWatermark(bool)`, `SetBlur(mode [, size])`, `GetBlur()`, `BlurEnabled()`, `Notify(opts)`, `Dialog(opts)`, `SaveConfig(name)`, `LoadConfig(name)`, `ListConfigs()`, `DeleteConfig(name)`.
 
 ### Tabs and containers
 
@@ -135,21 +136,21 @@ Any `Color3` token can be paired with `<Token>Transparency` (0 = opaque, 1 = inv
 | `StrokeThickness` | `UIStroke.Thickness` for primary borders. |
 | `Shadow` | `"soft"`, `"none"`, `"glow"`, `"hard"`. With `ShadowColor`, `ShadowTransparency`, `ShadowOffset` (Vector2, hard only). |
 | `ButtonShadow` | `"none"`, `"hard"`, `"glow"` under primary buttons. |
-| `Blur` | `true` applies a camera `BlurEffect` while the window is open. |
+| `Blur` | Only consulted in `"theme"` blur mode; windows default to no blur. |
 | `TextCase` | `"none"` or `"upper"` for buttons, tab labels, section headers and titles. |
 | `LetterSpacing` | Tracking for uppercase themes, in hair-space units. |
 
 ### Adding a custom theme
 
 ```lua
-Sypse:RegisterTheme("Cyan Terminal", {
-    Base = "Terminal",                       -- optional, defaults to Acrylic
+Sypse:RegisterTheme("Midnight Cyan", {
+    Base = "Voltage",                       -- optional, defaults to Acrylic
     Accent = Color3.fromHex("22E7FF"),
     AccentFg = Color3.fromHex("001318"),
     AccentSoft = Color3.fromHex("22E7FF"), AccentSoftTransparency = 0.86,
     CornerRadius = 4, CornerRadiusSmall = 3,
 })
-Sypse:SetTheme("Cyan Terminal")
+Sypse:SetTheme("Midnight Cyan")
 ```
 
 Only the tokens you list change. If you override a colour without its `…Transparency`, that transparency resets to opaque, so an overridden `Panel` doesn't silently inherit Acrylic's 0.945 glass value. Registered themes appear in `Sypse:GetThemeNames()`, so a theme-picker dropdown picks them up automatically.
@@ -158,6 +159,8 @@ To edit a built-in theme, change its table in §4 of `SypseUI.lua`; the section 
 
 ## Notes and substitutions
 
-**Roblox limits.** Roblox can't blur UI behind UI, so Acrylic's glass is a translucent panel over a tinted base plus a camera `BlurEffect` on the 3D world. Soft and glow shadows are stacked translucent rounded frames. Hard shadows are a solid offset frame. There is no letter-spacing property, so tracking inserts U+200A hair spaces; set `Sypse.Tracking = false` if a font renders them badly. The window body is a `CanvasGroup` so children clip to rounded corners (it falls back to a clipped `Frame` if unavailable).
+**Fonts.** The mockup's web fonts are not Roblox built-ins, so the themes use the nearest ones: Sora → GothamSSm, IBM Plex Sans → BuilderSans, IBM Plex Mono → RobotoMono, JetBrains Mono → Inconsolata (`Enum.Font.Code`), Chakra Petch → TitilliumWeb, Fredoka → FredokaOne, and Nunito is built in. Upload the real fonts and put their `rbxassetid://` family ids in the theme for a pixel match. Unknown fonts fall back to GothamSSm and never error.
+
+**Roblox limits.** Roblox can't blur UI behind UI, so Acrylic's glass is a translucent panel over a tinted base. The optional background blur is a `BlurEffect` on the camera, which blurs the 3D world behind the window; it is off by default and controlled per window (`Blur` option / `win:SetBlur`) or globally (`Sypse:SetBlur`), independently of the theme. Soft and glow shadows are stacked translucent rounded frames. Hard shadows are a solid offset frame. There is no letter-spacing property, so tracking inserts U+200A hair spaces; set `Sypse.Tracking = false` if a font renders them badly. The window body is a `CanvasGroup` so children clip to rounded corners (it falls back to a clipped `Frame` if unavailable).
 
 **Engineering.** Every themed property goes through one token registry, which is what lets `SetTheme` restyle live UI, including state-dependent styling such as a switch that is on. All `UserInputService` connections are tracked and disconnected on `Destroy`; drag handlers connect on press and disconnect on release. There is one shared `RenderStepped` counter for FPS, ping, memory and position. Spinners and blinking carets use infinite tweens rather than per-frame loops.

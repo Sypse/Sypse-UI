@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.3 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.4 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.3"
+Sypse.Version = "1.0.4"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -1128,6 +1128,8 @@ local TITLE_H, SIDEBAR_W, SEGBAR_H, STATUS_H, FOOTER_H = 52, 182, 56, 32, 78
 
 local Library = {
     Windows = {},
+    DefaultBlur = false,      -- blur is off by default for every theme
+    DefaultBlurSize = 10,
     ActiveWindow = nil,
     Flags = {},          -- flag → value         (exposed as Sypse.Flags)
     Options = {},        -- flag → control handle (exposed as Sypse.Options)
@@ -1273,6 +1275,9 @@ function Sypse:CreateWindow(o)
     self.ToggleKey = o.ToggleKey or Enum.KeyCode.RightShift
     self.ConfigFolder = o.ConfigFolder or "SypseUI"
     self.BaseSize = o.Size or UDim2.fromOffset(980, 620)
+    -- Blur: window option wins, else the library default (off unless Sypse:SetBlur set it).
+    self.BlurMode = (o.Blur ~= nil) and o.Blur or Library.DefaultBlur
+    self.BlurSize = o.BlurSize or Library.DefaultBlurSize
     self.Profile = o.Profile or "default.json"
 
     if o.Theme then Sypse:SetTheme(o.Theme, true) end
@@ -1606,8 +1611,32 @@ function Window:_setupInput()
     end))
 end
 
+--[[ Blur is a window setting, not a theme one.
+     Modes: false (default) — never blur
+            true            — blur under every theme
+            "theme"         — follow the theme's Blur token (Acrylic only, by default)
+     `Sypse:SetBlur(mode, size)` applies to every open window and becomes the
+     default for new ones. The legacy `DisableBlur` window option still forces off. ]]
+function Window:BlurEnabled()
+    if self.Options.DisableBlur then return false end
+    if self.BlurMode == "theme" then return CurrentTheme.Blur == true end
+    return self.BlurMode == true
+end
+
+--- SetBlur(true | false | "theme" [, size]) — takes effect immediately.
+function Window:SetBlur(mode, size)
+    if mode == nil then mode = true end
+    self.BlurMode = mode
+    if size then self.BlurSize = size end
+    self:_applyBlur()
+    return self
+end
+
+--- Returns the current mode and blur size.
+function Window:GetBlur() return self.BlurMode, self.BlurSize end
+
 function Window:_applyBlur()
-    local want = CurrentTheme.Blur and self.Visible and self.Alive and not self.Options.DisableBlur
+    local want = self:BlurEnabled() and self.Visible and self.Alive
     if want and not self._blur then
         local cam = workspace.CurrentCamera
         if cam then
@@ -1620,7 +1649,7 @@ function Window:_applyBlur()
             end)
             if ok then
                 self._blur = b
-                tween(b, 0.2, { Size = self.Options.BlurSize or 10 })
+                tween(b, 0.2, { Size = self.BlurSize })
             end
         end
     elseif not want and self._blur then
@@ -4246,6 +4275,24 @@ function Sypse:Every(seconds, fn)
     Library.Maid:Give(stop)
     return stop
 end
+
+--[[ Sypse:SetBlur(mode [, size])
+     Sets the background blur for every open window and the default for new ones.
+       false    (default) never blur
+       true     blur under every theme
+       "theme"  follow each theme's Blur token (Acrylic only, out of the box)
+     `size` is the BlurEffect size (default 10). ]]
+function Sypse:SetBlur(mode, size)
+    if mode == nil then mode = true end
+    Library.DefaultBlur = mode
+    if size then Library.DefaultBlurSize = size end
+    for _, w in ipairs(Library.Windows) do
+        if w.Alive then w:SetBlur(mode, size) end
+    end
+    return mode
+end
+
+function Sypse:GetBlur() return Library.DefaultBlur, Library.DefaultBlurSize end
 
 function Sypse:Toggle()
     local w = Library.ActiveWindow
