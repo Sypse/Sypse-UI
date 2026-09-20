@@ -13,7 +13,7 @@ local Sypse = require(script.Parent:WaitForChild("SypseUI"))
 **Loader environments.** Host `SypseUI.lua` somewhere raw and load it with `loadstring`:
 
 ```lua
-local Sypse = loadstring(game:HttpGet("https://example.com/SypseUI.lua"))()
+local Sypse = loadstring(game:HttpGet("https://raw.githubusercontent.com/Sypse/Sypse-UI/refs/heads/main/SypseUI.lua"))()
 ```
 
 The library parents to `gethui()` when available, then `CoreGui` if the script has permission, and otherwise `PlayerGui`. Executor globals (`writefile`, `readfile`, `listfiles`, `delfile`, `setclipboard`, `gethui`, `syn.protect_gui`, `cloneref`) are all feature-detected. Without file I/O, configs are kept in memory for the session; without a clipboard, Export prints the JSON to the output.
