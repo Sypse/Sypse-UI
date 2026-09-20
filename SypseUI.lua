@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.0 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.1 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.0"
+Sypse.Version = "1.0.1"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -160,15 +160,29 @@ end
 
 -- Position of a pointer InputObject in the same space as GuiObject.AbsolutePosition
 -- for a ScreenGui with IgnoreGuiInset = true.
--- Mouse: GetMouseLocation() is raw screen space (no inset), matching AbsolutePosition
--- of an IgnoreGuiInset ScreenGui. Touch: InputObject.Position excludes the inset.
+-- Pointer position in the same space as GuiObject.AbsolutePosition.
+-- Roblox reports AbsolutePosition relative to the area below the top-bar inset,
+-- even inside an IgnoreGuiInset ScreenGui (whose own AbsolutePosition is then
+-- (0, -inset)). Rather than hard-code that quirk, we take the raw screen point
+-- and add the reference ScreenGui's AbsolutePosition, which is correct either way.
+local RefGui = nil -- set by makeScreenGui
 local function pointerPos(input)
     local t = input.UserInputType
-    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.MouseButton2 then
-        return UserInputService:GetMouseLocation()
+    local raw
+    if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.MouseMovement
+        or t == Enum.UserInputType.MouseButton2 or t == Enum.UserInputType.MouseButton3 then
+        raw = UserInputService:GetMouseLocation()              -- raw screen space
+    else
+        raw = Vector2.new(input.Position.X, input.Position.Y) + GuiService:GetGuiInset() -- touch: inset-excluded → raw
     end
-    local inset = GuiService:GetGuiInset()
-    return Vector2.new(input.Position.X, input.Position.Y) + inset
+    if RefGui and RefGui.Parent then return raw + RefGui.AbsolutePosition end
+    return raw - GuiService:GetGuiInset()
+end
+
+-- Convert a GUI absolute position into ScreenGui offset space (for Position = …).
+local function absToOffset(abs)
+    if RefGui and RefGui.Parent then return abs - RefGui.AbsolutePosition end
+    return abs
 end
 
 local function isPointerDown(input)
@@ -1147,6 +1161,7 @@ local function makeScreenGui(name, order, parent)
     g.DisplayOrder = order
     if Env.protect_gui then pcall(Env.protect_gui, g) end
     g.Parent = guiParent(parent)
+    if not (RefGui and RefGui.Parent) then RefGui = g end
     return g
 end
 
@@ -3211,13 +3226,15 @@ end
      api with :Update(index, {Value=, Note=, Kind=}). ]]
 function Container:AddStatCards(cards)
     local n = math.max(1, #cards)
+    local gap = 10
     local grid = Frame({ Name = "Stats", Size = UDim2.new(1, 0, 0, 66), LayoutOrder = self:_lo(), Parent = self.Frame })
-    New("UIGridLayout", { CellSize = UDim2.new(1 / n, -(10 * (n - 1)) / n, 0, 66), CellPadding = UDim2.fromOffset(10, 10),
-        SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+    -- a non-wrapping horizontal list: sub-pixel rounding can never push the last card to a new row
+    List(grid, "x", gap)
+    local cellSize = UDim2.new(1 / n, -math.ceil(gap * (n - 1) / n), 1, 0)
     local api = { Cards = {}, Frame = grid }
     for i, c in ipairs(cards) do
         local st = { kind = c.Kind or "text" }
-        local card = Frame({ LayoutOrder = i, Parent = grid, Theme = { BackgroundColor3 = "Panel3" } })
+        local card = Frame({ Size = cellSize, LayoutOrder = i, Parent = grid, Theme = { BackgroundColor3 = "Panel3" } })
         Corner(card, "CornerRadiusSmall"); Stroke(card, "Stroke2"); Pad(card, 11, 13)
         List(card, "y", 6)
         Label(card, { Text = c.Label or "", TextSize = 9, Weight = "SemiBold", Mono = true, Case = "upper", Color = "Dim", LayoutOrder = 1 })
@@ -3428,7 +3445,7 @@ function Container:AddPlayerGrid(o)
     end
 
     local grid = Frame({ Name = "Grid", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = root })
-    local gridLayout = New("UIGridLayout", { CellSize = UDim2.new(1 / cols, -(10 * (cols - 1)) / cols, 0, 200), CellPadding = UDim2.fromOffset(10, 10),
+    local gridLayout = New("UIGridLayout", { CellSize = UDim2.new(1 / cols, -math.ceil(10 * (cols - 1) / cols) - 1, 0, 200), CellPadding = UDim2.fromOffset(10, 10),
         SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
     -- a UIAspectRatioConstraint parented to the UIGridLayout applies to every cell
     New("UIAspectRatioConstraint", { AspectRatio = o.AspectRatio or 0.74, Parent = gridLayout })
@@ -3810,9 +3827,9 @@ local function buildDialog(host, win, o)
     wrap.Size = UDim2.fromOffset(400, 180)
     card.Size = UDim2.new(0, 400, 0, 0)
     if o.DismissOnScrim then
-        scrim.MouseButton1Click:Connect(function()
-            local p = UserInputService:GetMouseLocation()
-            if not inRect(p, card) then closeDialog(); if cancel then safeCall(cancel.Callback) end end
+        scrim.InputBegan:Connect(function(input)
+            if not isPointerDown(input) then return end
+            if not inRect(pointerPos(input), card) then closeDialog(); if cancel then safeCall(cancel.Callback) end end
         end)
     end
     escConn = UserInputService.InputBegan:Connect(function(input)
@@ -3879,10 +3896,10 @@ function Window:SetWatermark(on)
         if not isPointerDown(input) then return end
         dragInput, moved = input, false
         startP = pointerPos(input)
-        local abs = holder.AbsolutePosition
+        local off = absToOffset(holder.AbsolutePosition)
         holder.AnchorPoint = Vector2.zero
-        holder.Position = UDim2.fromOffset(abs.X, abs.Y)
-        startPos = abs
+        holder.Position = UDim2.fromOffset(off.X, off.Y)
+        startPos = off
     end)
     self.Maid:Give(UserInputService.InputChanged:Connect(function(input)
         if not dragInput then return end
