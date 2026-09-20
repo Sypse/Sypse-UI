@@ -27,7 +27,7 @@ local Sypse = loadstring(game:HttpGet("https://raw.githubusercontent.com/Sypse/S
 --==============================================================================
 local win = Sypse:CreateWindow({
     Title = "Sypse Example",          -- title bar text (the app icon shows its first letter)
-    Version = "v1.0.9",               -- accent badge next to the title
+    Version = "v1.0.11",               -- accent badge next to the title
     Subtitle = "feature tour",        -- dim mono line after the badge
     Theme = "Acrylic",                -- any name in Sypse.Themes, or a theme table
     Size = UDim2.fromOffset(980, 620),
@@ -358,8 +358,30 @@ graphSec:AddButtonRow({
 
 local radarSec = adv:AddSection("Radar")
 local radarCols = radarSec:AddColumns(2)
-local radar = radarCols[1]:AddRadar({ Name = "Radar", Range = 250, Rotate = true })
-local squareRadar = radarCols[2]:AddRadar({ Name = "Square", Shape = "square", Range = 125, Ranges = { 75, 125, 300 }, Rotate = false })
+-- Live: Track = "players" polls every other player's position 10x a second and
+-- converts it to an offset from you, so blips move as you and they walk.
+local radar = radarCols[1]:AddRadar({ Name = "Radar", Range = 250, Rotate = true, Track = "players" })
+-- Or supply your own source with Get (polled on the same timer). Here: the four
+-- nearest parts in workspace, so it works in an empty solo place too.
+radarCols[1]:AddRadar({
+    Name = "Nearby parts", Range = 120, Ranges = { 60, 120, 240 }, Rotate = true, Interval = 0.15,
+    Get = function()
+        local char = Players.LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then return {} end
+        local out = {}
+        for _, part in ipairs(workspace:GetChildren()) do
+            if part:IsA("BasePart") then
+                local d = part.Position - root.Position
+                table.insert(out, { Position = Vector2.new(d.X, d.Z), Kind = "accent", Label = part.Name })
+                if #out >= 12 then break end
+            end
+        end
+        return out
+    end,
+})
+-- Static points via :SetPoints — these stay where you put them (no tracking).
+local squareRadar = radarCols[2]:AddRadar({ Name = "Square (static blips)", Shape = "square", Range = 125, Ranges = { 75, 125, 300 }, Rotate = false })
 local function randomBlips()
     local pts = {}
     for i = 1, 8 do
@@ -368,10 +390,9 @@ local function randomBlips()
     end
     return pts
 end
-radar:SetPoints(randomBlips())
 squareRadar:SetPoints(randomBlips())
 radarSec:AddButtonRow({
-    { Name = "Shuffle blips", Callback = function() radar:SetPoints(randomBlips()); squareRadar:SetPoints(randomBlips()) end },
+    { Name = "Shuffle static blips", Callback = function() squareRadar:SetPoints(randomBlips()) end },
     { Name = "Range 500", Callback = function() radar:SetRange(500) end },
 })
 

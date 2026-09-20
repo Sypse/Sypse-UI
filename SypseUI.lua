@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.9 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.11 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.9"
+Sypse.Version = "1.0.11"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -4549,9 +4549,17 @@ end
 -- Radar / minimap
 --------------------------------------------------------------------------------
 --[[ AddRadar({ Name = "Radar", Range = 250, Ranges = {125,250,500},
-                Shape = "circle" | "square", Rotate = true, MaxWidth = 340 })
-     :SetPoints({ { Position = Vector2/Vector3 (world-relative), Kind = "danger", Label = "x" } })
-     :SetRange(n), :GetRange(), :SetOrigin(cframeOrVector) for live tracking. ]]
+                Shape = "circle" | "square", Rotate = true, MaxWidth = 340,
+                -- live data (pick one, or feed manually with :SetPoints):
+                Track = "players",          -- every other player, updated for you
+                Get = function() return { … } end,  -- your own source, polled
+                Interval = 0.1,             -- how often Track/Get is polled
+                Origin = function() return cf end,  -- defaults to your HumanoidRootPart
+                KindFor = function(player) return "danger" end })
+     Points are WORLD-RELATIVE offsets from the origin, so they must be recomputed
+     as things move — that is what Track/Get do. Feeding a fixed list with
+     :SetPoints leaves the blips where you put them.
+     :SetPoints(list), :SetRange(n), :GetRange(), :Poll() ]]
 function Container:AddRadar(o)
     o = o or {}
     local ctl = newControl("Radar", o)
@@ -4705,6 +4713,59 @@ function Container:AddRadar(o)
             if #points > 0 then ctl:Redraw() end
         end)
         ctl.Maid:Give(function() Library.Telemetry.subs[ctl] = nil end)
+    end
+    --[[ Live sources. Blips are offsets from the origin, so somebody has to
+         recompute them; Track/Get do it on a light timer (default 10 Hz — often
+         enough to feel live while walking, far cheaper than RenderStepped). ]]
+    local function originPos()
+        if o.Origin then
+            local ok, v = pcall(o.Origin)
+            if ok and v then return typeof(v) == "CFrame" and v.Position or v end
+        end
+        local char = LocalPlayer and LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        return root and root.Position or nil
+    end
+
+    local function trackedPoints()
+        if o.Get then
+            local ok, list = pcall(o.Get)
+            return ok and list or {}
+        end
+        local from = originPos()
+        if not from then return {} end
+        local out = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+                if root then
+                    local d = root.Position - from
+                    local kind = "danger"
+                    if o.KindFor then
+                        local ok, k = pcall(o.KindFor, p)
+                        if ok and k then kind = k end
+                    end
+                    table.insert(out, { Position = Vector2.new(d.X, d.Z), Kind = kind, Label = p.Name })
+                end
+            end
+        end
+        return out
+    end
+
+    function ctl:Poll()
+        if o.Track or o.Get then self:SetPoints(trackedPoints()) end
+    end
+
+    if o.Track or o.Get then
+        local alive = true
+        ctl.Maid:Give(function() alive = false end)
+        task.spawn(function()
+            while alive do
+                if not card.Parent then break end
+                ctl:Poll()
+                task.wait(o.Interval or 0.1)
+            end
+        end)
     end
     if o.Points then ctl:SetPoints(o.Points) end
     ctl:SetRange(range)
