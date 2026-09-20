@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.2 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.0.3 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.2"
+Sypse.Version = "1.0.3"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -1363,11 +1363,17 @@ function Sypse:CreateWindow(o)
     local sidebar = Frame({ Name = "Sidebar", Size = UDim2.new(0, SIDEBAR_W, 1, 0), Parent = body, Theme = { BackgroundColor3 = "Panel3" } })
     Frame({ Name = "Border", AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), BackgroundTransparency = 0, Parent = sidebar,
         Theme = { BackgroundColor3 = "Stroke", Size = function(t) return UDim2.new(0, math.max(1, math.floor(t.StrokeThickness + 0.5)), 1, 0) end } })
+    -- UIStroke renders OUTSIDE its frame and a ScrollingFrame clips its children,
+    -- so full-width tab buttons would lose the outer part of their border. The
+    -- list is widened by STROKE_ROOM on every side and padded back in by the same
+    -- amount: tabs stay put, strokes up to STROKE_ROOM px thick have room to draw.
+    local STROKE_ROOM = 3
     local tabList = New("ScrollingFrame", {
-        Name = "Tabs", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(11, 14),
-        Size = UDim2.new(1, -22, 1, -(14 + FOOTER_H + 11)), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        Name = "Tabs", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(11 - STROKE_ROOM, 14 - STROKE_ROOM),
+        Size = UDim2.new(1, -22 + STROKE_ROOM * 2, 1, -(14 + FOOTER_H + 11) + STROKE_ROOM * 2), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
         ScrollBarThickness = 0, ScrollingDirection = Enum.ScrollingDirection.Y, Parent = sidebar,
     })
+    Pad(tabList, STROKE_ROOM)
     List(tabList, "y", 4)
     self.TabList = tabList
 
