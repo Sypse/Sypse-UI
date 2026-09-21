@@ -8,8 +8,8 @@
     Loader:  local Sypse = loadstring(game:HttpGet("<raw url to SypseUI.lua>"))()
 
     Tabs (→ = segments, the sub-tab strip at the top of a page):
-        1. Basics      toggles, checkboxes, sliders, range sliders, inputs
-        2. Pickers     dropdowns (single / searchable / multi), keybinds, colours
+        1. Basics      → Toggles · Sliders · Inputs
+        2. Pickers     → Dropdowns · Keybinds · Colours
         3. Buttons     every variant, rows, double-click confirm, dialogs, toasts
         4. Layout      → Sections · Columns · Accordions
         5. Feedback    progress, spinners, badges, stat cards (custom + live)
@@ -49,11 +49,11 @@ local win = Sypse:CreateWindow({
 local function toast(title, body, kind) Sypse:Notify({ Title = title, Body = body, Kind = kind }) end
 
 --==============================================================================
--- 1. BASICS
+-- 1. BASICS  (toggles · sliders · inputs, one segment each)
 --==============================================================================
 local basics = win:AddTab({ Name = "Basics", Icon = "circle" })
 
-local tgl = basics:AddSection("Toggles")
+local tgl = basics:AddSegment("Toggles")
 tgl:AddToggle({
     Name = "Plain toggle",
     Description = "Description line in mono",           -- optional second line
@@ -68,7 +68,7 @@ tgl:AddToggle({ Name = "Risky toggle", Description = "Profiles saved while this 
 tgl:AddToggle({ Name = "Locked toggle", Description = "Faded and non-interactive", Locked = true })
 tgl:AddCheckbox({ Name = "Checkbox variant", Default = true, Flag = "ex_check" })
 
-local sld = basics:AddSection("Sliders")
+local sld = basics:AddSegment("Sliders")
 sld:AddSlider({ Name = "Default slider", Min = 0, Max = 100, Default = 42, Flag = "ex_slider",
     Callback = function(v) Sypse:Log("INFO", "Slider → " .. v) end })
 sld:AddSlider({ Name = "Decimal step + suffix", Min = 0, Max = 2, Step = 0.05, Default = 1, Suffix = "x" })
@@ -78,7 +78,7 @@ sld:AddSlider({ Name = "Custom format", Min = 0, Max = 3600, Step = 30, Default 
 sld:AddRangeSlider({ Name = "Range slider", Min = 0, Max = 180, Default = { 25, 140 }, Suffix = "°", MinGap = 5, Flag = "ex_range",
     Callback = function(lo, hi) Sypse:Log("INFO", ("Range → %d–%d"):format(lo, hi)) end })
 
-local inp = basics:AddSection("Inputs")
+local inp = basics:AddSegment("Inputs")
 inp:AddInput({ Name = "Text", Placeholder = "Type something…", Flag = "ex_text",
     OnFocusLost = function(text, enter) Sypse:Log("INFO", ("Text committed (%s): %s"):format(enter and "enter" or "blur", text)) end })
 inp:AddInput({ Name = "Numeric (0–500)", Description = "Rejects non-numbers, clamps on blur", Numeric = true, Default = 120, Min = 0, Max = 500, Flag = "ex_num" })
@@ -88,11 +88,11 @@ inp:AddInput({ Name = "Multi-line", MultiLine = true, Default = "line one\nline 
     Callback = function(text) Sypse:Log("INFO", "Notes saved (" .. #text .. " chars)") end })
 
 --==============================================================================
--- 2. PICKERS
+-- 2. PICKERS  (dropdowns · keybinds · colours, one segment each)
 --==============================================================================
 local pickers = win:AddTab({ Name = "Pickers", Icon = "square" })
 
-local dd = pickers:AddSection("Dropdowns")
+local dd = pickers:AddSegment("Dropdowns")
 local fruit = dd:AddDropdown({ Name = "Single select", Options = { "Apple", "Banana", "Cherry", "Durian" }, Default = "Banana", Flag = "ex_fruit",
     Callback = function(v) Sypse:Log("INFO", "Fruit → " .. tostring(v)) end })
 dd:AddDropdown({ Name = "Searchable", Searchable = true, Placeholder = "Pick a material",
@@ -107,7 +107,7 @@ dd:AddButtonRow({
     end },
 })
 
-local kb = pickers:AddSection("Keybinds")
+local kb = pickers:AddSegment("Keybinds")
 local cols = kb:AddColumns(2)
 cols[1]:AddKeybind({ Name = "Press mode", Default = Enum.KeyCode.G, Mode = "Press", Flag = "ex_key_press",
     Callback = function() toast("Pressed", "G fired its callback", "accent") end })
@@ -121,7 +121,7 @@ kb:AddKeybind({ Name = "Menu toggle key", MenuKey = true, Flag = "ex_menukey",
     Description = "Rebinds the window toggle key itself" })
 kb:AddParagraph("Click a field, then press any key or mouse button. Escape cancels, Backspace clears.")
 
-local col = pickers:AddSection("Colour pickers")
+local col = pickers:AddSegment("Colours")
 local cp = col:AddColumns(2)
 cp[1]:AddColorPicker({ Name = "With alpha", Default = Color3.fromHex("7AA2FF"), Alpha = 0.8, Flag = "ex_color",
     Callback = function(c, transparency) Sypse:Log("INFO", ("Colour → #%s @ %.2f"):format(c:ToHex(), transparency)) end })
