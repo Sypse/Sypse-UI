@@ -7,7 +7,7 @@
     ███████║   ██║   ██║     ███████║███████╗    ╚██████╔╝██║
     ╚══════╝   ╚═╝   ╚═╝     ╚══════╝╚══════╝     ╚═════╝ ╚═╝
 
-    Sypse UI v1.0.11 — a themeable, Instance-only Roblox UI library.
+    Sypse UI v1.1.0 — a themeable, Instance-only Roblox UI library.
 
     One ModuleScript, no dependencies. Works from `require` in a plain Studio
     LocalScript and from `loadstring` in environments that provide it.
@@ -36,7 +36,7 @@
 ]]
 
 local Sypse = {}
-Sypse.Version = "1.0.11"
+Sypse.Version = "1.1.0"
 
 --==============================================================================
 -- §1  SERVICES & ENVIRONMENT GUARDS
@@ -4294,7 +4294,13 @@ local function linePool(parent, colorSpec, thickness, fillSpec)
         end
         return f
     end
-    return function(pts, h, w)
+    -- Pooled frames keep the colour they were bound with, so switching series has
+    -- to re-apply their bindings (the spec closure reads the *active* series).
+    local function restylePool()
+        for _, f in ipairs(segs) do restyle(f, 0.12) end
+        for _, f in ipairs(cols) do restyle(f, 0.12) end
+    end
+    local function draw(pts, h, w)
         local n = #pts
         for i = 1, math.max(#segs, math.max(0, n - 1)) do
             local f = segs[i]
@@ -4332,6 +4338,7 @@ local function linePool(parent, colorSpec, thickness, fillSpec)
             end
         end
     end
+    return draw, restylePool
 end
 
 -- Catmull-Rom subdivision: turns the sample points into a smooth curve.
@@ -4370,6 +4377,7 @@ function Container:AddGraph(o)
 
     local card, _, headerRight = dataCard(self, "Graph_" .. ctl.Name, o.Name or "Graph", 11)
     ctl.Root = card
+    local drawMain, restyleMain -- forward-declared: the series buttons below close over them
     -- series switch
     if #series > 1 then
         local strip = Frame({ AutomaticSize = Enum.AutomaticSize.XY, Parent = headerRight, Theme = { BackgroundColor3 = "Panel2" } })
@@ -4380,6 +4388,7 @@ function Container:AddGraph(o)
             local _, parts = pill(strip, s.Name, i, function() return active == i end, function()
                 active = i
                 for _, p in ipairs(partsAll) do restyleAll(p, 0.12) end
+                restyleMain()   -- the pooled line/fill frames now belong to another series
                 ctl:Redraw()
             end, { Radius = function(t) return math.max(0, t.CornerRadiusSmall - 3) end, PadY = 5, PadX = 12, TextSize = 11, Mono = false, NoBorder = true })
             table.insert(partsAll, parts)
@@ -4399,7 +4408,7 @@ function Container:AddGraph(o)
     local dot = Frame({ Name = "Dot", Size = UDim2.fromOffset(5, 5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 4, Visible = false,
         BackgroundTransparency = 0, Parent = plot, Theme = { BackgroundColor3 = function(t) return resolveSpec(series[active].Color, t, nil) end } })
     Corner(dot, "full")
-    local drawMain = linePool(plot, function(t) return resolveSpec(series[active].Color, t, nil) end, 2)
+    drawMain, restyleMain = linePool(plot, function(t) return resolveSpec(series[active].Color, t, nil) end, 2)
 
     -- sparklines
     local sparks = {}
@@ -4415,7 +4424,8 @@ function Container:AddGraph(o)
             local mini = Frame({ Name = "Mini", Position = UDim2.fromOffset(40, 0), Size = UDim2.new(1, -86, 1, 0), ClipsDescendants = true, Parent = cell })
             local value = Label(cell, { Text = "—", TextSize = 12, Weight = "SemiBold", Mono = true, AnchorPoint = Vector2.new(1, 0.5),
                 Position = UDim2.new(1, 0, 0.5, 0), Color = function(t) return resolveSpec(s.Color, t, nil) end })
-            sparks[i] = { frame = mini, value = value, draw = linePool(mini, s.Color, 2, false) }
+            local draw, restylePool = linePool(mini, s.Color, 2, false)
+            sparks[i] = { frame = mini, value = value, draw = draw, restyle = restylePool }
         end
     end
 
@@ -4505,6 +4515,7 @@ function Container:AddGraph(o)
     end
     function ctl:SetSeries(name)
         for i, s in ipairs(series) do if s.Name == name or i == name then active = i break end end
+        restyleMain()
         self:Redraw()
     end
     function ctl:GetSeries() return series[active].Name end
@@ -4535,7 +4546,11 @@ function Container:AddGraph(o)
         end)
     end
     plot:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() ctl:Redraw() end)
-    ThemeListeners[ctl] = function() ctl:Redraw() end
+    ThemeListeners[ctl] = function()
+        restyleMain()
+        for _, sp in ipairs(sparks) do sp.restyle() end
+        ctl:Redraw()
+    end
     ctl.Maid:Give(function() ThemeListeners[ctl] = nil end)
     task.defer(function() if card.Parent then ctl:Redraw() end end)
 
@@ -4801,7 +4816,10 @@ function Container:AddTable(o)
     ctl.Root = card
     local meta = Label(headerRight, { Text = "", TextSize = 10.5, Mono = true, Color = "Dim" })
 
-    local shell = Frame({ Name = "Shell", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = card })
+    -- Both the shell and the header clip: whatever a theme does to caption widths,
+    -- nothing can ever paint outside the table's own border.
+    local shell = Frame({ Name = "Shell", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2,
+        ClipsDescendants = true, Parent = card })
     Corner(shell, 8); Stroke(shell, "Stroke")
     List(shell, "y", 0)
 
@@ -4817,22 +4835,36 @@ function Container:AddTable(o)
     end
 
     -- header
-    local head = Frame({ Name = "Head", Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 1, Parent = shell, Theme = { BackgroundColor3 = "Panel2" } })
-    Frame({ AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), BackgroundTransparency = 0,
-        Parent = head, Theme = { BackgroundColor3 = "Stroke" } })
-    Pad(head, 0, 4)
-    List(head, "x", 0, { VerticalAlignment = Enum.VerticalAlignment.Center })
+    local head = Frame({ Name = "Head", Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 1, ClipsDescendants = true, Parent = shell,
+        Theme = { BackgroundColor3 = "Panel2" } })
+    --[[ The 1px bottom rule lives OUTSIDE the laid-out row. A UIListLayout lays out
+         every GuiObject child, so a full-width border frame parented next to the
+         column cells takes the first slot and pushes them all off the right edge. ]]
+    Frame({ Name = "Rule", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1),
+        BackgroundTransparency = 0, ZIndex = 2, Parent = head, Theme = { BackgroundColor3 = "Stroke" } })
+    local headRow = Frame({ Name = "Cells", Size = UDim2.fromScale(1, 1), Parent = head })
+    Pad(headRow, 0, 4)
+    List(headRow, "x", 0, { VerticalAlignment = Enum.VerticalAlignment.Center })
     local headParts = {}
     for i, c in ipairs(columns) do
         local isActive = function() return sortKey == c.Key end
-        local btn = Button({ Name = "Col_" .. tostring(c.Key), Size = colSize(c), LayoutOrder = i, Parent = head })
-        Pad(btn, 0, 8)
-        List(btn, "x", 5, { VerticalAlignment = Enum.VerticalAlignment.Center,
-            HorizontalAlignment = (c.Align == "left" or (not c.Numeric and c.Align ~= "right")) and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right })
+        local btn = Button({ Name = "Col_" .. tostring(c.Key), Size = colSize(c), LayoutOrder = i, Parent = headRow, ClipsDescendants = true })
+        Pad(btn, 0, 6) -- matches the body cell padding so columns line up
         local fg = function(t) return tk(t, isActive() and "Accent" or "Dim") end
+        local rightAligned = c.Align == "right" or (c.Numeric and c.Align ~= "left")
+        --[[ Explicit width + truncation, NOT a list layout with auto-sized labels:
+             uppercase themes letter-space the caption ("P L A Y E R"), which would
+             otherwise grow past the column and shove the header out of the table. ]]
+        -- the sort arrow sits on the outside edge so the caption stays flush with
+        -- the values underneath it
         local lbl = Label(btn, { Text = c.Label or tostring(c.Key), TextSize = 9.5, Weight = "SemiBold", Mono = true, Case = "upper",
-            Color = fg, LayoutOrder = 1, Truncate = true })
-        local arrow = Label(btn, { Text = "", TextSize = 7.5, Mono = true, Color = fg, LayoutOrder = 2 })
+            Color = fg, Truncate = true, Size = UDim2.new(1, -11, 1, 0),
+            Position = rightAligned and UDim2.fromOffset(11, 0) or UDim2.new(),
+            XAlign = rightAligned and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left })
+        local arrow = Label(btn, { Text = "", TextSize = 7.5, Mono = true, Color = fg, Size = UDim2.fromOffset(9, 14),
+            AnchorPoint = Vector2.new(rightAligned and 0 or 1, 0.5),
+            Position = UDim2.new(rightAligned and 0 or 1, 0, 0.5, 0),
+            XAlign = rightAligned and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right })
         btn.MouseButton1Click:Connect(function() ctl:Sort(c.Key) end)
         headParts[i] = { btn = btn, lbl = lbl, arrow = arrow, col = c }
     end
