@@ -129,7 +129,7 @@ Any `Color3` token can be paired with `<Token>Transparency` (0 = opaque, 1 = inv
 | `Track`, `Knob` | Slider track and switch off-state / thumbs and knobs. |
 | `Text`, `Dim` | Primary / muted text. |
 | `Tooltip` | Tooltip, dropdown popup and toast background. |
-| `Console`, `ConsoleText` | Log viewer background and text. |
+| `Console`, `ConsoleText` | Dark inset surface: the log viewer, the tree view, the graph plot and the radar canvas, plus the text drawn on them. These stay dark in the light themes, so anything drawn there is contrast-checked against `Console` and blended toward `ConsoleText` if it would otherwise disappear (Paper's `Accent` is black, for instance). |
 | `Accent`, `AccentFg`, `AccentSoft`, `AccentLine` | Primary action colour, text on it, 10–15 % tint, ~30 % border. |
 | `Accent2` | Secondary accent (range sliders, thin spinner). |
 | `Ok` / `OkSoft` / `OkLine`, `Warn` / …, `Danger` / … | Semantic colours with the same soft/line convention. |

@@ -706,6 +706,26 @@ local function pairedProp(inst, prop)
     return PAIRED[prop]
 end
 
+-- Relative luminance + a contrast guard. Some surfaces (the log console, the tree
+-- view) are dark in every theme, including the light ones, so tokens meant for
+-- light surfaces (Text, and a black Accent like Paper's) become invisible on them.
+-- `legibleOn` keeps a colour's hue but blends it toward a readable fallback when
+-- it would otherwise disappear into the background.
+local function luminance(c)
+    return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
+end
+local function blend(a, b, k)
+    return Color3.new(a.R + (b.R - a.R) * k, a.G + (b.G - a.G) * k, a.B + (b.B - a.B) * k)
+end
+local function legibleOn(color, bg, fallback, minDelta)
+    if not color or not bg or not fallback then return color end
+    local delta = math.abs(luminance(color) - luminance(bg))
+    if delta >= (minDelta or 0.25) then return color end
+    local mixed = blend(color, fallback, 0.72)
+    if math.abs(luminance(mixed) - luminance(bg)) >= (minDelta or 0.25) then return mixed end
+    return fallback
+end
+
 -- token → (value, transparency)
 local function tk(t, name)
     return t[name], t[name .. "Transparency"] or 0
@@ -4068,6 +4088,7 @@ function Container:AddTree(o)
     local card, _, headerRight = dataCard(self, "Tree_" .. ctl.Name, o.Name or "Explorer", 9)
     ctl.Root = card
     local selLabel = Label(headerRight, { Text = "—", TextSize = 10.5, Mono = true, Color = "Dim" })
+    local dimOnConsole = function(t) return legibleOn(t.Dim, t.Console, t.ConsoleText), 0 end
 
     local view = New("ScrollingFrame", {
         Name = "View", Size = UDim2.new(1, 0, 0, o.Height or 268), LayoutOrder = 2, BorderSizePixel = 0,
@@ -4126,7 +4147,12 @@ function Container:AddTree(o)
         local row = Button({ Name = "Node", Size = UDim2.new(1, 0, 0, 22), LayoutOrder = order, Parent = view,
             Theme = { BackgroundColor3 = function(t) if st.sel then return tk(t, "AccentSoft") end return t.Panel2, 1 end } })
         Corner(row, 5)
-        local fg = function(t) return tk(t, st.sel and "Accent" or "Text") end
+        -- the tree sits on the Console surface (dark in every theme), so colours are
+        -- taken from ConsoleText and guarded for contrast against it
+        local fg = function(t)
+            local base = st.sel and t.Accent or t.ConsoleText
+            return legibleOn(base, t.Console, t.ConsoleText), 0
+        end
         local x = depth * 16 + 10
         if node.branch then
             local caret = Chevron(row, fg, { Size = UDim2.fromOffset(10, 10), AnchorPoint = Vector2.new(0, 0.5),
@@ -4135,7 +4161,10 @@ function Container:AddTree(o)
         end
         local ic = iconFor(node)
         local icon = Frame({ Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, x + 3, 0.5, 0),
-            BackgroundTransparency = 0, Parent = row, Theme = { BackgroundColor3 = function(t) return tk(t, ic.token) end } })
+            BackgroundTransparency = 0, Parent = row, Theme = { BackgroundColor3 = function(t)
+                local c, tr = tk(t, ic.token)
+                return legibleOn(c, t.Console, t.ConsoleText), tr
+            end } })
         Corner(icon, ic.radius)
         local lbl = Label(row, { Text = node.name, TextSize = 11.5, Mono = true, Truncate = true, Color = fg,
             Position = UDim2.fromOffset(x + 18, 0), Size = UDim2.new(1, -(x + 52), 1, 0) })
@@ -4399,16 +4428,20 @@ function Container:AddGraph(o)
     local plot = Frame({ Name = "Plot", Size = UDim2.new(1, 0, 0, o.Height or 92), LayoutOrder = 2, ClipsDescendants = true,
         Parent = card, Theme = { BackgroundColor3 = "Console" } })
     Corner(plot, 8); Stroke(plot, "Stroke")
+    -- everything inside the plot sits on the Console surface (dark in every theme)
+    local onPlot = function(t, spec) return legibleOn(resolveSpec(spec, t, nil), t.Console, t.ConsoleText) end
     local lastLabel = Label(plot, { Text = "—", TextSize = 15, Weight = "SemiBold", Position = UDim2.fromOffset(9, 6), ZIndex = 5,
-        Color = function(t) return resolveSpec(series[active].Color, t, nil) end })
-    local peakLabel = Label(plot, { Text = "peak —", TextSize = 9.5, Mono = true, Color = "Dim", ZIndex = 5,
+        Color = function(t) return onPlot(t, series[active].Color), 0 end })
+    local peakLabel = Label(plot, { Text = "peak —", TextSize = 9.5, Mono = true, ZIndex = 5,
+        Color = function(t) return legibleOn(t.Dim, t.Console, t.ConsoleText), 0 end,
         AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -9, 0, 7) })
-    local lowLabel = Label(plot, { Text = "low —", TextSize = 9.5, Mono = true, Color = "Dim", ZIndex = 5,
+    local lowLabel = Label(plot, { Text = "low —", TextSize = 9.5, Mono = true, ZIndex = 5,
+        Color = function(t) return legibleOn(t.Dim, t.Console, t.ConsoleText), 0 end,
         AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -9, 1, -6) })
     local dot = Frame({ Name = "Dot", Size = UDim2.fromOffset(5, 5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 4, Visible = false,
-        BackgroundTransparency = 0, Parent = plot, Theme = { BackgroundColor3 = function(t) return resolveSpec(series[active].Color, t, nil) end } })
+        BackgroundTransparency = 0, Parent = plot, Theme = { BackgroundColor3 = function(t) return onPlot(t, series[active].Color), 0 end } })
     Corner(dot, "full")
-    drawMain, restyleMain = linePool(plot, function(t) return resolveSpec(series[active].Color, t, nil) end, 2)
+    drawMain, restyleMain = linePool(plot, function(t) return onPlot(t, series[active].Color) end, 2)
 
     -- sparklines
     local sparks = {}
@@ -4611,12 +4644,12 @@ function Container:AddRadar(o)
     for _, frac in ipairs({ 0.666, 0.333 }) do
         local ring = Frame({ Size = UDim2.fromScale(frac, frac), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Parent = canvas })
         Corner(ring, square and 6 or "full")
-        Stroke(ring, function(t) return t.Stroke, fade(t.StrokeTransparency or 0, 0.3) end, 1)
+        Stroke(ring, function(t) return legibleOn(t.Stroke, t.Console, t.ConsoleText, 0.12), fade(t.StrokeTransparency or 0, 0.3) end, 1)
     end
     Frame({ Size = UDim2.new(0, 1, 1, 0), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), BackgroundTransparency = 0,
-        Parent = canvas, Theme = { BackgroundColor3 = function(t) return t.Stroke, fade(t.StrokeTransparency or 0, 0.45) end } })
+        Parent = canvas, Theme = { BackgroundColor3 = function(t) return legibleOn(t.Stroke, t.Console, t.ConsoleText, 0.12), fade(t.StrokeTransparency or 0, 0.45) end } })
     Frame({ Size = UDim2.new(1, 0, 0, 1), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundTransparency = 0,
-        Parent = canvas, Theme = { BackgroundColor3 = function(t) return t.Stroke, fade(t.StrokeTransparency or 0, 0.45) end } })
+        Parent = canvas, Theme = { BackgroundColor3 = function(t) return legibleOn(t.Stroke, t.Console, t.ConsoleText, 0.12), fade(t.StrokeTransparency or 0, 0.45) end } })
 
     --[[ Sweep. A GuiObject rotates about its own centre, not its AnchorPoint, so a
          half-width bar anchored at the middle of the canvas swings around a pivot
@@ -4626,7 +4659,7 @@ function Container:AddRadar(o)
          This is correct whichever pivot the engine uses. ]]
     local sweep = Frame({ Name = "Sweep", Size = UDim2.new(1, 0, 0, 2), AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 0, ZIndex = 2, Parent = canvas,
-        Theme = { BackgroundColor3 = function(t) return t.Accent, 0.45 end } })
+        Theme = { BackgroundColor3 = function(t) return legibleOn(t.Accent, t.Console, t.ConsoleText), 0.45 end } })
     New("UIGradient", { Parent = sweep, Transparency = NumberSequence.new({
         NumberSequenceKeypoint.new(0, 1),      -- behind the centre: invisible
         NumberSequenceKeypoint.new(0.499, 1),
@@ -4642,10 +4675,12 @@ function Container:AddRadar(o)
 
     -- local player
     local me = Frame({ Name = "Player", Size = UDim2.fromOffset(9, 9), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
-        ZIndex = 5, BackgroundTransparency = 0, Parent = canvas, Theme = { BackgroundColor3 = "Accent" } })
+        ZIndex = 5, BackgroundTransparency = 0, Parent = canvas,
+        Theme = { BackgroundColor3 = function(t) return legibleOn(t.Accent, t.Console, t.ConsoleText), 0 end } })
     Corner(me, "full")
     Stroke(me, "AccentSoft", 3)
-    local rangeLabel = Label(canvas, { Text = "range " .. range .. "m", TextSize = 9.5, Mono = true, Color = "Dim", ZIndex = 5,
+    local rangeLabel = Label(canvas, { Text = "range " .. range .. "m", TextSize = 9.5, Mono = true, ZIndex = 5,
+        Color = function(t) return legibleOn(t.Dim, t.Console, t.ConsoleText), 0 end,
         AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -8), XAlign = Enum.TextXAlignment.Center })
 
     local blips, points = {}, {}
@@ -4657,7 +4692,7 @@ function Container:AddRadar(o)
             b.frame = Frame({ Name = "Blip", Size = UDim2.fromOffset(8, 8), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 4,
                 BackgroundTransparency = 0, Parent = canvas,
                 Theme = { BackgroundColor3 = function(t)
-                    return t[KIND[kindOf(st.kind)][1]], st.far and 0.45 or 0
+                    return legibleOn(t[KIND[kindOf(st.kind)][1]], t.Console, t.ConsoleText), st.far and 0.45 or 0
                 end } })
             Corner(b.frame, "full")
             blips[i] = b

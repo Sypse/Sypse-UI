@@ -7,16 +7,17 @@
     (e.g. both in StarterPlayerScripts) and press Play.
     Loader:  local Sypse = loadstring(game:HttpGet("<raw url to SypseUI.lua>"))()
 
-    Tabs:
+    Tabs (→ = segments, the sub-tab strip at the top of a page):
         1. Basics      toggles, checkboxes, sliders, range sliders, inputs
         2. Pickers     dropdowns (single / searchable / multi), keybinds, colours
         3. Buttons     every variant, rows, double-click confirm, dialogs, toasts
-        4. Layout      sections, columns, accordions, segments, text blocks
+        4. Layout      → Sections · Columns · Accordions
         5. Feedback    progress, spinners, badges, stat cards (custom + live)
-        6. Data        console + search bar, player grid
-        7. Config      flags, config manager, save / load / export / apply
-        8. Themes      theme switching, custom themes, window controls
-        9. Handles     :Set / :Get / :SetVisible / :SetLocked / :OnChanged / :Destroy
+        6. Data        → Console · Player grid · Table
+        7. Displays    → Tree · Graph · Radar
+        8. Config      flags, config manager, save / load / export / apply
+        9. Themes      theme switching, custom themes, window controls
+       10. Handles     :Set / :Get / :SetVisible / :SetLocked / :OnChanged / :Destroy
 ]]
 
 local Players = game:GetService("Players")
@@ -277,11 +278,12 @@ stats:AddLabel({ Text = "Live telemetry (real FPS / ping / memory / position):",
 stats:AddLiveStats({ TargetFPS = 60, WarnFPS = 55, WarnPing = 100, Region = "server" })
 
 --==============================================================================
--- 6. DATA
+-- 6. DATA  (console · player grid · table)
 --==============================================================================
 local data = win:AddTab({ Name = "Data", Icon = "square" })
 local consoleSeg = data:AddSegment("Console")
 local playersSeg = data:AddSegment("Player grid")
+local tableSeg = data:AddSegment("Table")
 
 local console = consoleSeg:AddConsole({ Height = 260, HookLogService = true, MaxLines = 200 })
 consoleSeg:AddSearchBar({ Placeholder = "Filter console lines…", Target = console }) -- shows "matches/total"
@@ -319,12 +321,48 @@ playersSeg:AddButton({ Name = "Refresh grid with 3 items", Callback = function()
     grid:Refresh({ SAMPLE[2], SAMPLE[4], SAMPLE[6] })
 end })
 
+local tableSec = tableSeg:AddSection("Leaderboard")
+local rows = {
+    { name = "kaiblox", kills = 24, deaths = 8, kd = 3.0, cash = 12400, ping = 42 },
+    { name = "Vortex_9", kills = 12, deaths = 14, kd = 0.86, cash = 5200, ping = 88 },
+    { name = "mochi_pop", kills = 31, deaths = 15, kd = 2.07, cash = 18900, ping = 155 },
+    { name = "RBX_Ghost", kills = 3, deaths = 9, kd = 0.33, cash = 800, ping = 61 },
+    { name = "sunnyd", kills = 18, deaths = 9, kd = 2.0, cash = 9100, ping = 37 },
+}
+local board = tableSec:AddTable({
+    Name = "Leaderboard", Rows = rows, Sort = { Key = "kd", Dir = "desc" },
+    Columns = {
+        { Key = "name", Label = "Player", Width = "2fr" },
+        { Key = "kills", Label = "K", Width = "0.7fr", Numeric = true },
+        { Key = "deaths", Label = "D", Width = "0.7fr", Numeric = true, Dim = true },
+        { Key = "kd", Label = "K/D", Width = "0.8fr", Numeric = true,
+            Format = function(v) return string.format("%.2f", v) end,
+            Color = function(v) if v >= 2 then return "Ok" elseif v < 1 then return "Dim" end return nil end },
+        { Key = "cash", Label = "Cash", Width = "1fr", Numeric = true, Format = function(v) return "$" .. v end },
+        { Key = "ping", Label = "Ping", Width = "0.8fr", Numeric = true, Format = function(v) return v .. " ms" end,
+            Color = function(v) if v < 60 then return "Ok" elseif v < 120 then return "Warn" end return "Danger" end },
+    },
+    OnSelect = function(row) toast("Row selected", row.name, "accent") end,
+})
+tableSec:AddSearchBar({ Placeholder = "Filter rows…", Target = board })
+tableSec:AddButtonRow({
+    { Name = "Sort by cash", Callback = function() board:Sort("cash", "desc") end },
+    { Name = "Add a row", Callback = function()
+        board:AddRow({ name = "new_" .. math.random(10, 99), kills = math.random(0, 40), deaths = math.random(1, 20),
+            kd = math.random(10, 400) / 100, cash = math.random(100, 30000), ping = math.random(20, 250) })
+    end },
+})
+
+
 --==============================================================================
--- 6b. ADVANCED DATA DISPLAYS  (tree · graph · radar · table)
+-- 7. DISPLAYS  (tree · graph · radar, one segment each)
 --==============================================================================
 local adv = win:AddTab({ Name = "Displays", Icon = "diamond" })
+local treeSeg = adv:AddSegment("Tree")
+local graphSeg = adv:AddSegment("Graph")
+local radarSeg = adv:AddSegment("Radar")
 
-local treeSec = adv:AddSection("Tree view")
+local treeSec = treeSeg:AddSection("Tree view")
 local treeCols = treeSec:AddColumns(2)
 -- an Instance root: children are read lazily, only when a node is expanded
 treeCols[1]:AddTree({ Name = "Explorer", Root = workspace, Depth = 1,
@@ -341,7 +379,7 @@ treeSec:AddButtonRow({
     { Name = "Point at Lighting", Callback = function() cfgTree:SetRoot(game:GetService("Lighting")) end },
 })
 
-local graphSec = adv:AddSection("Line graph")
+local graphSec = graphSeg:AddSection("Line graph")
 local graph = graphSec:AddGraph({
     Name = "Last 60 seconds", Window = 60, Interval = 1,
     Series = {
@@ -356,7 +394,7 @@ graphSec:AddButtonRow({
     { Name = "Show Ping", Callback = function() graph:SetSeries("Ping") end },
 })
 
-local radarSec = adv:AddSection("Radar")
+local radarSec = radarSeg:AddSection("Radar")
 local radarCols = radarSec:AddColumns(2)
 -- Live: Track = "players" polls every other player's position 10x a second and
 -- converts it to an offset from you, so blips move as you and they walk.
@@ -396,40 +434,8 @@ radarSec:AddButtonRow({
     { Name = "Range 500", Callback = function() radar:SetRange(500) end },
 })
 
-local tableSec = adv:AddSection("Data table")
-local rows = {
-    { name = "kaiblox", kills = 24, deaths = 8, kd = 3.0, cash = 12400, ping = 42 },
-    { name = "Vortex_9", kills = 12, deaths = 14, kd = 0.86, cash = 5200, ping = 88 },
-    { name = "mochi_pop", kills = 31, deaths = 15, kd = 2.07, cash = 18900, ping = 155 },
-    { name = "RBX_Ghost", kills = 3, deaths = 9, kd = 0.33, cash = 800, ping = 61 },
-    { name = "sunnyd", kills = 18, deaths = 9, kd = 2.0, cash = 9100, ping = 37 },
-}
-local board = tableSec:AddTable({
-    Name = "Leaderboard", Rows = rows, Sort = { Key = "kd", Dir = "desc" },
-    Columns = {
-        { Key = "name", Label = "Player", Width = "2fr" },
-        { Key = "kills", Label = "K", Width = "0.7fr", Numeric = true },
-        { Key = "deaths", Label = "D", Width = "0.7fr", Numeric = true, Dim = true },
-        { Key = "kd", Label = "K/D", Width = "0.8fr", Numeric = true,
-            Format = function(v) return string.format("%.2f", v) end,
-            Color = function(v) if v >= 2 then return "Ok" elseif v < 1 then return "Dim" end return nil end },
-        { Key = "cash", Label = "Cash", Width = "1fr", Numeric = true, Format = function(v) return "$" .. v end },
-        { Key = "ping", Label = "Ping", Width = "0.8fr", Numeric = true, Format = function(v) return v .. " ms" end,
-            Color = function(v) if v < 60 then return "Ok" elseif v < 120 then return "Warn" end return "Danger" end },
-    },
-    OnSelect = function(row) toast("Row selected", row.name, "accent") end,
-})
-tableSec:AddSearchBar({ Placeholder = "Filter rows…", Target = board })
-tableSec:AddButtonRow({
-    { Name = "Sort by cash", Callback = function() board:Sort("cash", "desc") end },
-    { Name = "Add a row", Callback = function()
-        board:AddRow({ name = "new_" .. math.random(10, 99), kills = math.random(0, 40), deaths = math.random(1, 20),
-            kd = math.random(10, 400) / 100, cash = math.random(100, 30000), ping = math.random(20, 250) })
-    end },
-})
-
 --==============================================================================
--- 7. CONFIG
+-- 8. CONFIG
 --==============================================================================
 local config = win:AddTab({ Name = "Config", Icon = "circle" })
 local cm = config:AddSection("Config manager")
@@ -474,7 +480,7 @@ api:AddButtonRow({
 api:AddParagraph("Sypse.Options[flag] is the control handle; Sypse.Flags[flag] is its current value. Colour pickers also write Flags[flag .. \"Transparency\"].")
 
 --==============================================================================
--- 8. THEMES & WINDOW
+-- 9. THEMES & WINDOW
 --==============================================================================
 -- Register a custom theme before building the picker so it shows up in the list.
 -- Partial tables merge over Base (default "Acrylic"); only the listed tokens change.
@@ -550,7 +556,7 @@ wsec:AddButtonRow({
 wsec:AddParagraph("Press / to focus the filter box in the top bar — it filters the current page's controls by name.")
 
 --==============================================================================
--- 9. HANDLES
+-- 10. HANDLES
 --==============================================================================
 local handles = win:AddTab({ Name = "Handles", Icon = "circle" })
 local h = handles:AddSection("Control handle methods")
