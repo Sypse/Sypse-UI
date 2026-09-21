@@ -4823,6 +4823,11 @@ function Container:AddTable(o)
     Corner(shell, 8); Stroke(shell, "Stroke")
     List(shell, "y", 0)
 
+    -- Width reserved on the right of every cell for the sort arrow. The header
+    -- caption AND the body values both give it up, so a right-aligned column's
+    -- values stay flush under its caption.
+    local ARROW_GUTTER = 14
+
     -- column widths: numbers are px, "2fr"/anything else shares the rest
     local fixed, flex = 0, 0
     for _, c in ipairs(columns) do
@@ -4855,16 +4860,29 @@ function Container:AddTable(o)
         --[[ Explicit width + truncation, NOT a list layout with auto-sized labels:
              uppercase themes letter-space the caption ("P L A Y E R"), which would
              otherwise grow past the column and shove the header out of the table. ]]
-        -- the sort arrow sits on the outside edge so the caption stays flush with
-        -- the values underneath it
+        --[[ The sort arrow sits immediately to the right of the caption text.
+             Right-aligned (numeric) columns: the text ends at the caption's right
+             edge, so pinning the arrow to that edge already puts it beside the
+             text. Left-aligned columns: the text ends wherever it ends, so the
+             arrow follows TextBounds (kept inside the cell). ]]
         local lbl = Label(btn, { Text = c.Label or tostring(c.Key), TextSize = 9.5, Weight = "SemiBold", Mono = true, Case = "upper",
-            Color = fg, Truncate = true, Size = UDim2.new(1, -11, 1, 0),
-            Position = rightAligned and UDim2.fromOffset(11, 0) or UDim2.new(),
+            Color = fg, Truncate = true, Size = UDim2.new(1, -ARROW_GUTTER, 1, 0),
             XAlign = rightAligned and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left })
-        local arrow = Label(btn, { Text = "", TextSize = 7.5, Mono = true, Color = fg, Size = UDim2.fromOffset(9, 14),
-            AnchorPoint = Vector2.new(rightAligned and 0 or 1, 0.5),
-            Position = UDim2.new(rightAligned and 0 or 1, 0, 0.5, 0),
-            XAlign = rightAligned and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right })
+        local arrow = Label(btn, { Text = "", TextSize = 7.5, Mono = true, Color = fg, Size = UDim2.fromOffset(10, 14),
+            AnchorPoint = Vector2.new(rightAligned and 1 or 0, 0.5),
+            Position = UDim2.new(rightAligned and 1 or 0, 0, 0.5, 0),
+            XAlign = rightAligned and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left })
+        if not rightAligned then
+            local function placeArrow()
+                local sc = (self.Window and self.Window._s) and self.Window:_s() or 1
+                local textW = (lbl.TextBounds and lbl.TextBounds.X or 0) / sc
+                local contentW = btn.AbsoluteSize.X / sc - 12 -- minus the cell padding (6 each side)
+                arrow.Position = UDim2.new(0, math.min(textW + 5, math.max(0, contentW - 10)), 0.5, 0)
+            end
+            lbl:GetPropertyChangedSignal("TextBounds"):Connect(placeArrow)
+            btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(placeArrow)
+            task.defer(placeArrow)
+        end
         btn.MouseButton1Click:Connect(function() ctl:Sort(c.Key) end)
         headParts[i] = { btn = btn, lbl = lbl, arrow = arrow, col = c }
     end
@@ -4911,12 +4929,14 @@ function Container:AddTable(o)
                 local colorSpec = cellColor(c, raw, row)
                 local cell = Frame({ Size = colSize(c), LayoutOrder = ci, Parent = inner })
                 Pad(cell, 0, 6)
+                local cellRight = c.Align == "right" or (c.Numeric and c.Align ~= "left")
                 Label(cell, {
                     Text = text, TextSize = 11.5, Mono = c.Mono ~= false and (c.Numeric or c.Mono) or false,
                     Weight = (ci == 1 or c.Bold) and "Medium" or "Regular",
                     Color = colorSpec or (ci == 1 and "Text" or (c.Dim and "Dim" or "Text")),
-                    Size = UDim2.fromScale(1, 1), Truncate = true,
-                    XAlign = (c.Align == "right" or (c.Numeric and c.Align ~= "left")) and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left,
+                    -- same content box as the header caption, so values line up with it
+                    Size = UDim2.new(1, cellRight and -ARROW_GUTTER or 0, 1, 0), Truncate = true,
+                    XAlign = cellRight and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left,
                 })
             end
             rf.MouseButton1Click:Connect(function()
