@@ -308,7 +308,7 @@ local SAMPLE = {
 local grid = playersSeg:AddPlayerGrid({
     -- "live" = real players, updating as they join/leave; a list = your own items
     Items = (#Players:GetPlayers() > 1) and "live" or SAMPLE,
-    Columns = 4,
+    Columns = 5,
     Default = 1,
     OnSelect = function(item) if item then Sypse:Log("INFO", "Selected " .. item.Name) end end,
     Actions = {
